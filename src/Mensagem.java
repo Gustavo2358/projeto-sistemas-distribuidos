@@ -1,6 +1,6 @@
 public class Mensagem {
 
-    public void JOIN(){
+    public void join(){
 
     }
 }

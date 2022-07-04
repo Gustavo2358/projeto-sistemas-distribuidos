@@ -18,16 +18,67 @@ public class Peer {
     private static List<String> filesList;
 
     public static void main(String[] args) {
+        boolean leave = false;
+        do {
+            int opt = menu();
+            switch (opt) {
+                case 1:
+                    join();
+                    break;
+                case 2:
+                    System.out.println("em construção");
+                    break;
+                case 3:
+                    System.out.println("em construção");
+                    break;
+                case 4:
+                    System.out.println("Leaving...");
+                    leave = true;
+                    break;
+                default:
+                    System.out.println("Digíte uma opção válida (entre 1 e 4)");
+                    break;
+            }
+        } while (!leave);
+
+    }
+
+    private static void join() {
         getInfo();
-
         //String com as infos
-        StringBuilder stringBuilder = new StringBuilder();
+        StringBuilder stringArquivos = new StringBuilder();
         for(String f : filesList)
-            stringBuilder.append(f).append(" ");
+            stringArquivos.append(f).append(" ");
         String infos = String.format("Sou peer %s:%s com arquivos %s",
-                ip.toString().substring(1), port, stringBuilder);
+                ip.toString().substring(1), port, stringArquivos);
         System.out.println(infos);
+    }
 
+    private static int menu() {
+        System.out.println("Digíte a opção desejada:");
+        System.out.println("1 - JOIN");
+        System.out.println("2 - SEARCH");
+        System.out.println("3 - DOWNLOAD");
+        System.out.println("4 - LEAVE");
+        Scanner sc = new Scanner(System.in);
+        String optString;
+        int opt;
+        do {
+            optString = sc.nextLine();
+            opt = validate(optString);
+        } while( opt == -1);
+        return opt;
+    }
+
+    private static int validate(String optString) {
+        int opt;
+        try {
+            opt = Integer.parseInt(optString);
+        }catch (NumberFormatException e){
+            System.out.println("Digíte um valor numérico");
+            return -1;
+        }
+        return opt;
     }
 
     private static void getInfo() {
@@ -41,12 +92,8 @@ public class Peer {
         }
         System.out.println("Porta:");
         port = Integer.parseInt(sc.nextLine());
-        System.out.println("Nome da pasta: ");
-        String directoryName = sc.nextLine();
-        createFolder(directoryName);
-        directoryPath = Paths.get(directoryName);
+        selectDirectory(sc);
         filesList = listFilesInFolder(directoryPath);
-
     }
 
     private static List<String> listFilesInFolder(Path directoryPath) {
@@ -60,16 +107,24 @@ public class Peer {
             e.printStackTrace();
             return new ArrayList<>();
         }
-
     }
 
-    private static void createFolder(String DirectoryName){
-        try {
-            if (!Files.isDirectory(Paths.get(DirectoryName))) {
-                Files.createDirectory(Paths.get(DirectoryName));
+    private static void selectDirectory(Scanner sc){
+        do {
+            System.out.println("Nome da pasta: ");
+            String directoryName = sc.nextLine();
+            try {
+                if (!Files.isDirectory(Paths.get(directoryName))) {
+                    System.out.println("O diretório ainda não existe, criando novo diretório...");
+                    Files.createDirectory(Paths.get(directoryName));
+                    System.out.println("Diretório criado com sucesso.");
+                    directoryPath = Paths.get(directoryName);
+                    return;
+                }
+                System.out.println("Diretório selecionado.");
+            } catch (java.io.IOException e) {
+                System.out.println("Erro para criar...digite um caminho válido");
             }
-        } catch (java.io.IOException e){
-            e.printStackTrace();
-        }
+        }while(true);
     }
 }
