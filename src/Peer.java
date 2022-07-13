@@ -1,3 +1,5 @@
+import com.google.gson.Gson;
+
 import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -72,21 +74,35 @@ public class Peer {
 
     private static void join() {
         getInfo();
-        sendJoinRequest();
-        receiveJoinResponse();
-        printInfo();
+        //TODO dúvida: join deve ser totalmente assíncrono ou não? caso não, as outras operações poderão ser feitas sem fazer o join
+        Thread joinThread = new Thread(() -> {
+            boolean joinOk = false;
+            //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
+            do {
+                sendJoinRequest();
+                String response = receiveJoinResponse();
+                if (response.equals("JOIN_OK")) {
+                    joinOk = true;
+                    printInfo();
+                }
+            }while (!joinOk);
+        });
+        joinThread.start();
     }
 
-    private static void receiveJoinResponse() {
-        try {
-            DatagramSocket clientSocket = new DatagramSocket(port);
+    private static String receiveJoinResponse() {
+        //TODO recebendo uma string ao invés de um objeto mensagem
+        try (DatagramSocket clientSocket = new DatagramSocket(port)){
             byte[] recBuffer = new byte[1024];
             DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+            clientSocket.setSoTimeout(2000);
             clientSocket.receive(recPkt);
-            System.out.println(new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength()));
-
+            return new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength());
+        }  catch (SocketTimeoutException e) {
+            return "Error";
         } catch (IOException e) {
             e.printStackTrace();
+            return e.getMessage();
         }
     }
 
@@ -94,13 +110,10 @@ public class Peer {
         try {
             DatagramSocket clientSocket = new DatagramSocket(port);
             InetAddress serverIpAddress = InetAddress.getByName("127.0.0.1");
-            //TODO enviar objeto Mensagem ao invés da string
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("JOIN").append(" ").append(ip.toString()).append(" ").append(port);
-            for(String file: filesList)
-                sb.append(" ").append(file);
-            byte[] sendData = sb.toString().getBytes(StandardCharsets.UTF_8);
+            Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
+            Gson gson = new Gson();
+            String messageJson = gson.toJson(joinMessage);
+            byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, serverIpAddress, 10098 );
             clientSocket.send(sendPacket);
             clientSocket.close();
@@ -151,6 +164,7 @@ public class Peer {
             directoryPath = Paths.get(directoryName);
             try {
                 if (!Files.isDirectory(Paths.get(directoryName))) {
+                    //TODO apagar mensagens no console que não estão na requisição do professor
                     System.out.println("O diretório ainda não existe, criando novo diretório...");
                     Files.createDirectory(Paths.get(directoryName));
                     System.out.println("Diretório criado com sucesso.");
