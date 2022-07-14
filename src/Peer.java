@@ -24,7 +24,7 @@ public class Peer {
     private static List<String> filesList;
 
     public static void main(String[] args) {
-        boolean leave = false;
+        boolean leaveOk = false;
         do {
             int opt = menu();
             switch (opt) {
@@ -39,14 +39,58 @@ public class Peer {
                     break;
                 case 4:
                     System.out.println("Leaving...");
-                    leave = true;
+                    leaveOk = leave();
                     break;
                 default:
                     System.out.println("Digite uma opção válida (entre 1 e 4)");
                     break;
             }
-        } while (!leave);
+        } while (!leaveOk);
 
+    }
+
+    private static boolean leave() {
+        Thread leaveThread = new Thread(()->{
+            boolean leaveOk = false;
+            //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
+            do {
+                sendLeaveRequest();
+                String response = receiveResponse();
+                if (response.equals("LEAVE_OK")) {
+                    leaveOk = true;
+                }
+            }while (!leaveOk);
+        });
+        leaveThread.start();
+        return true;
+    }
+
+    private static String receiveResponse() {
+        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+            byte[] recBuffer = new byte[1024];
+            DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+            clientSocket.setSoTimeout(TIME_OUT);
+            clientSocket.receive(recPkt);
+            Mensagem response = getMessageFromDatagramPacket(recPkt);
+            return response.getRequestType();
+        }  catch (SocketTimeoutException e) {
+            return "Error";
+        } catch (IOException e) {
+            e.printStackTrace();
+            return e.getMessage();
+        }
+    }
+
+    private static void sendLeaveRequest() {
+        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
+            Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+            clientSocket.send(sendPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println(e.getMessage());
+        }
     }
 
     private static int menu() {
@@ -84,40 +128,22 @@ public class Peer {
             //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
             do {
                 sendJoinRequest();
-                String response = receiveJoinResponse();
+                String response = receiveResponse();
                 if (response.equals("JOIN_OK")) {
                     joinOk = true;
-                    printInfo();
+                    printJoinInfo();
                 }
             }while (!joinOk);
         });
         joinThread.start();
     }
 
-    private static String receiveJoinResponse() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
-            byte[] recBuffer = new byte[1024];
-            DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
-            clientSocket.setSoTimeout(TIME_OUT);
-            clientSocket.receive(recPkt);
-            Mensagem joinResponse = getMessageFromDatagramPacket(recPkt);
-            return joinResponse.getRequestType();
-        }  catch (SocketTimeoutException e) {
-            return "Error";
-        } catch (IOException e) {
-            e.printStackTrace();
-            return e.getMessage();
-        }
-    }
-
     private static void sendJoinRequest() {
-        try {
-            DatagramSocket clientSocket = new DatagramSocket(port);
+        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
             clientSocket.send(sendPacket);
-            clientSocket.close();
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println(e.getMessage());
@@ -140,7 +166,7 @@ public class Peer {
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
 
-    private static void printInfo() {
+    private static void printJoinInfo() {
         //String com as infos
         StringBuilder stringArquivos = new StringBuilder();
         for(String f : filesList)

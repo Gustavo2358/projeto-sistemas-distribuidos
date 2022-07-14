@@ -22,13 +22,16 @@ public class Servidor {
     public static void main(String[] args) {
 
         try {
-            DatagramSocket Socket = new DatagramSocket(10098);
+            DatagramSocket socket = new DatagramSocket(10098);
             while(true){
-                Mensagem receivedMessage = listenToIncomingMessages(Socket);
+                Mensagem receivedMessage = listenToIncomingMessages(socket);
                 switch (receivedMessage.getRequestType()) {
                     case "JOIN":
                         //cria uma thread para requisição JOIN
-                        join(Socket, receivedMessage);
+                        join(socket, receivedMessage);
+                        break;
+                    case "LEAVE":
+                        leave(socket, receivedMessage);
                         break;
                 }
             }
@@ -37,11 +40,24 @@ public class Servidor {
         }
     }
 
+    private static void leave(DatagramSocket socket, Mensagem receivedMessage) {
+        Thread leaveThread = new Thread(()-> {
+            try {
+                handleLeaveRequest(receivedMessage);
+                sendOkResponse(socket, receivedMessage, "LEAVE_OK");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        leaveThread.start();
+    }
+
+
     private static void join(DatagramSocket socket, Mensagem receivedMessage) {
         Thread joinThread = new Thread(()-> {
             try {
-                joinRequest(receivedMessage);
-                sendJoinOkResponse(socket, receivedMessage);
+                handleJoinRequest(receivedMessage);
+                sendOkResponse(socket, receivedMessage, "JOIN_OK");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -49,7 +65,12 @@ public class Servidor {
         joinThread.start();
     }
 
-    private static void joinRequest(Mensagem receivedMessage) throws IOException {
+    private static void handleLeaveRequest(Mensagem receivedMessage) throws IOException{
+        InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
+        peers.remove(peerAddress);
+    }
+
+    private static void handleJoinRequest(Mensagem receivedMessage) throws IOException {
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
         /*TODO se for feito um JOIN com o endereço de outra pessoa, mas com uma pasta com outros arquivos, esses arquivos
          * serão sobrescritos e o ALIVE_OK não irá limpar esses arquivos caso o peer original não tenho saído da rede.
@@ -62,13 +83,12 @@ public class Servidor {
 
     }
 
-    private static void sendJoinOkResponse(DatagramSocket socket, Mensagem receivedMessage) throws IOException {
-        Mensagem joinOkMessage = new Mensagem("JOIN_OK");
+    private static void sendOkResponse(DatagramSocket socket, Mensagem receivedMessage, String okType) throws IOException {
+        Mensagem joinOkMessage = new Mensagem(okType);
         DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), joinOkMessage);
-//        byte[] sendBuf = "JOIN_OK".getBytes(StandardCharsets.UTF_8);
-//        DatagramPacket sendPacket = new DatagramPacket(sendBuf,sendBuf.length, receivedMessage.getIp(), receivedMessage.getPort());
 
         //TODO debug, apagar depois, imprime estado atual do peers
+        System.out.println("Arquivos no map peers:");
         peers.entrySet().stream().forEach(System.out::println);
         //TODO debug, apagar esse sleep, só para teste
         //simulando uma resposta demorada
