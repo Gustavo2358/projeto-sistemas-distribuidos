@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -84,9 +85,14 @@ public class Peer {
     private static void sendLeaveRequest() {
         try (DatagramSocket clientSocket = new DatagramSocket(port)){
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
-            Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
-            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-            clientSocket.send(sendPacket);
+            if(Objects.nonNull(ip) && Objects.nonNull(port) && Objects.nonNull(filesList)) {
+                Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
+                DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+                clientSocket.send(sendPacket);
+            } else {
+                getInfo();
+                sendLeaveRequest();
+            }
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println(e.getMessage());

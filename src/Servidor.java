@@ -97,7 +97,6 @@ public class Servidor {
 //        } catch (InterruptedException e) {
 //            e.printStackTrace();
 //        }
-
         socket.send(sendPacket);
     }
 
