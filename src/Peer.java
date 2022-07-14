@@ -14,6 +14,10 @@ import java.util.stream.Stream;
 
 public class Peer {
 
+    private final static int TIME_OUT = 2000;
+    private final static String SERVER_IP = "127.0.0.1";
+    private final static int SERVER_PORT = 10098;
+
     private static InetAddress ip;
     private static int port;
     private static Path directoryPath;
@@ -91,13 +95,13 @@ public class Peer {
     }
 
     private static String receiveJoinResponse() {
-        //TODO recebendo uma string ao invés de um objeto mensagem
         try (DatagramSocket clientSocket = new DatagramSocket(port)){
             byte[] recBuffer = new byte[1024];
             DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
-            clientSocket.setSoTimeout(2000);
+            clientSocket.setSoTimeout(TIME_OUT);
             clientSocket.receive(recPkt);
-            return new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength());
+            Mensagem joinResponse = getMessageFromDatagramPacket(recPkt);
+            return joinResponse.getRequestType();
         }  catch (SocketTimeoutException e) {
             return "Error";
         } catch (IOException e) {
@@ -109,12 +113,9 @@ public class Peer {
     private static void sendJoinRequest() {
         try {
             DatagramSocket clientSocket = new DatagramSocket(port);
-            InetAddress serverIpAddress = InetAddress.getByName("127.0.0.1");
+            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
-            Gson gson = new Gson();
-            String messageJson = gson.toJson(joinMessage);
-            byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, serverIpAddress, 10098 );
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
             clientSocket.send(sendPacket);
             clientSocket.close();
         } catch (IOException e) {
@@ -122,6 +123,20 @@ public class Peer {
             System.err.println(e.getMessage());
         }
 
+    }
+
+    private static Mensagem getMessageFromDatagramPacket(DatagramPacket recPkt) {
+        String recData = new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength());
+        Gson gson = new Gson();
+        return gson.fromJson(recData, Mensagem.class);
+    }
+
+    private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
+        Gson gson = new Gson();
+        String messageJson = gson.toJson(Message);
+        System.out.println("Json sended: " + messageJson);
+        byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
+        return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
 
     private static void printInfo() {

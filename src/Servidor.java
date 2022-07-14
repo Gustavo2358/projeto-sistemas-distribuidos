@@ -3,6 +3,7 @@ import com.google.gson.Gson;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.stream.Collectors;
  */
 //TODO implementar LEAVE
 public class Servidor {
-    private static Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
+    private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
 
@@ -62,18 +63,20 @@ public class Servidor {
     }
 
     private static void sendJoinOkResponse(DatagramSocket socket, Mensagem receivedMessage) throws IOException {
-        byte[] sendBuf = "JOIN_OK".getBytes(StandardCharsets.UTF_8);
-        DatagramPacket sendPacket = new DatagramPacket(sendBuf,sendBuf.length, receivedMessage.getIp(), receivedMessage.getPort());
+        Mensagem joinOkMessage = new Mensagem("JOIN_OK");
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), joinOkMessage);
+//        byte[] sendBuf = "JOIN_OK".getBytes(StandardCharsets.UTF_8);
+//        DatagramPacket sendPacket = new DatagramPacket(sendBuf,sendBuf.length, receivedMessage.getIp(), receivedMessage.getPort());
 
-        //TODO apagar depois
+        //TODO apagar depois, imprime estado atual do peers
         peers.entrySet().stream().forEach(System.out::println);
         //TODO apagar esse sleep, só para teste
         //simulando uma resposta demorada
-        try {
-            Thread.sleep(4500);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+//        try {
+//            Thread.sleep(4500);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
 
         socket.send(sendPacket);
     }
@@ -82,9 +85,20 @@ public class Servidor {
         byte[] recBuffer = new byte[1024];
         DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
         serverSocket.receive(recPkt);
-        String recData = new String(recPkt.getData(),recPkt.getOffset(),recPkt.getLength());
+        return getMessageFromDatagramPacket(recPkt);
+    }
+
+    private static Mensagem getMessageFromDatagramPacket(DatagramPacket recPkt) {
+        String recData = new String(recPkt.getData(), recPkt.getOffset(), recPkt.getLength());
         Gson gson = new Gson();
-        Mensagem receivedMessage = gson.fromJson(recData, Mensagem.class);
-        return receivedMessage;
+        return gson.fromJson(recData, Mensagem.class);
+    }
+
+    private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
+        Gson gson = new Gson();
+        String messageJson = gson.toJson(Message);
+        System.out.println("Json sended: " + messageJson);
+        byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
+        return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
 }

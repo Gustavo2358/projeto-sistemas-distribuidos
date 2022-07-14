@@ -4,8 +4,9 @@ import java.util.List;
 public class Mensagem {
     private String requestType;
     private InetAddress ip;
-    private int port;
+    private Integer port;
     private List<String> files;
+    private String requestedFile;
 
     public Mensagem() {
     }
@@ -15,6 +16,10 @@ public class Mensagem {
         this.ip = ip;
         this.port = port;
         this.files = files;
+    }
+
+    public Mensagem(String requestType) {
+        this.requestType = requestType;
     }
 
     public String getRequestType() {
@@ -31,6 +36,10 @@ public class Mensagem {
 
     public List<String> getFiles() {
         return files;
+    }
+
+    public String getRequestedFile() {
+        return requestedFile;
     }
 
     @Override
