@@ -42,13 +42,4 @@ public class Mensagem {
         return requestedFile;
     }
 
-    @Override
-    public String toString() {
-        return "Mensagem{" +
-                "requestType='" + requestType + '\'' +
-                ", ip=" + ip +
-                ", port=" + port +
-                ", files=" + files +
-                '}';
-    }
 }

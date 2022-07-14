@@ -134,7 +134,8 @@ public class Peer {
     private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
         Gson gson = new Gson();
         String messageJson = gson.toJson(Message);
-        System.out.println("Json sended: " + messageJson);
+        //TODO debug, apagar depois
+        System.out.println("Json enviado para o Servidor: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
@@ -179,7 +180,7 @@ public class Peer {
             directoryPath = Paths.get(directoryName);
             try {
                 if (!Files.isDirectory(Paths.get(directoryName))) {
-                    //TODO apagar mensagens no console que não estão na requisição do professor
+                    //TODO debug, apagar mensagens no console que não estão na requisição do professor
                     System.out.println("O diretório ainda não existe, criando novo diretório...");
                     Files.createDirectory(Paths.get(directoryName));
                     System.out.println("Diretório criado com sucesso.");

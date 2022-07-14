@@ -68,9 +68,9 @@ public class Servidor {
 //        byte[] sendBuf = "JOIN_OK".getBytes(StandardCharsets.UTF_8);
 //        DatagramPacket sendPacket = new DatagramPacket(sendBuf,sendBuf.length, receivedMessage.getIp(), receivedMessage.getPort());
 
-        //TODO apagar depois, imprime estado atual do peers
+        //TODO debug, apagar depois, imprime estado atual do peers
         peers.entrySet().stream().forEach(System.out::println);
-        //TODO apagar esse sleep, só para teste
+        //TODO debug, apagar esse sleep, só para teste
         //simulando uma resposta demorada
 //        try {
 //            Thread.sleep(4500);
@@ -97,7 +97,8 @@ public class Servidor {
     private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
         Gson gson = new Gson();
         String messageJson = gson.toJson(Message);
-        System.out.println("Json sended: " + messageJson);
+        //TODO debug, apagar depois
+        System.out.println("Json request foi enviado para o Peer: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
