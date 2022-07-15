@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
  * o JOIN_OK, será que é importante implementar algum dispositivo no servidor que não aceite um certo número de
  * requisições repetidas em um determinado período de tempo? (por exemplo, uma black list).
  */
-//TODO implementar LEAVE
 public class Servidor {
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
 
@@ -23,22 +22,39 @@ public class Servidor {
 
         try {
             DatagramSocket socket = new DatagramSocket(10098);
-            while(true){
+            //noinspection InfiniteLoopStatement
+            do {
                 Mensagem receivedMessage = listenToIncomingMessages(socket);
                 switch (receivedMessage.getRequestType()) {
                     case "JOIN":
                         //cria uma thread para requisição JOIN
                         join(socket, receivedMessage);
                         break;
+                    case "SEARCH":
+                        search(socket, receivedMessage);
+                        break;
                     case "LEAVE":
                         leave(socket, receivedMessage);
                         break;
                 }
-            }
+            } while (true);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+    private static void search(DatagramSocket socket, Mensagem receivedMessage) {
+        Thread searchThread = new Thread(() -> {
+            List<InetSocketAddress> peersWithRequestedFiles = handleSearchRequest(receivedMessage);
+            try {
+                sendSearchResult(socket, receivedMessage, peersWithRequestedFiles);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        searchThread.start();
+    }
+
 
     private static void leave(DatagramSocket socket, Mensagem receivedMessage) {
         Thread leaveThread = new Thread(()-> {
@@ -65,6 +81,16 @@ public class Servidor {
         joinThread.start();
     }
 
+    private static List<InetSocketAddress> handleSearchRequest(Mensagem receivedMessage) {
+        System.out.printf("Peer %s:%s solicitou arquivo %s%n",
+                receivedMessage.getIp(), receivedMessage.getPort(), receivedMessage.getRequestedFile());
+        String requestedFile = receivedMessage.getRequestedFile();
+        return peers.entrySet().stream()
+                .filter(e -> e.getValue().contains(requestedFile))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
     private static void handleLeaveRequest(Mensagem receivedMessage) throws IOException{
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
         peers.remove(peerAddress);
@@ -83,13 +109,22 @@ public class Servidor {
 
     }
 
+    private static void sendSearchResult(DatagramSocket socket, Mensagem receivedMessage, List<InetSocketAddress> peersWithRequestedFiles) throws IOException {
+        List<String> peersString = peersWithRequestedFiles.stream()
+                .map(i -> String.format("%s:%d",i.getAddress().toString(),i.getPort()))
+                .collect(Collectors.toList());
+        Mensagem searchOkMessage = new Mensagem("SEARCH_OK", peersString);
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), searchOkMessage);
+        socket.send(sendPacket);
+    }
+
     private static void sendOkResponse(DatagramSocket socket, Mensagem receivedMessage, String okType) throws IOException {
-        Mensagem joinOkMessage = new Mensagem(okType);
-        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), joinOkMessage);
+        Mensagem OkMessage = new Mensagem(okType);
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), OkMessage);
 
         //TODO debug, apagar depois, imprime estado atual do peers
         System.out.println("Arquivos no map peers:");
-        peers.entrySet().stream().forEach(System.out::println);
+        peers.entrySet().forEach(System.out::println);
         //TODO debug, apagar esse sleep, só para teste
         //simulando uma resposta demorada
 //        try {

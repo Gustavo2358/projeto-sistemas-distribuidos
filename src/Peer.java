@@ -12,7 +12,8 @@ import java.util.Objects;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
+//TODO search pode ser feito com informações null
+//TODO no timeout do search é retornado um null ao invés da lista
 public class Peer {
 
     private final static int TIME_OUT = 2000;
@@ -33,7 +34,7 @@ public class Peer {
                     join();
                     break;
                 case 2:
-                    System.out.println("em construção");
+                    search();
                     break;
                 case 3:
                     System.out.println("em construção");
@@ -48,55 +49,6 @@ public class Peer {
             }
         } while (!leaveOk);
 
-    }
-
-    private static boolean leave() {
-        Thread leaveThread = new Thread(()->{
-            boolean leaveOk = false;
-            //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
-            do {
-                sendLeaveRequest();
-                String response = receiveResponse();
-                if (response.equals("LEAVE_OK")) {
-                    leaveOk = true;
-                }
-            }while (!leaveOk);
-        });
-        leaveThread.start();
-        return true;
-    }
-
-    private static String receiveResponse() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
-            byte[] recBuffer = new byte[1024];
-            DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
-            clientSocket.setSoTimeout(TIME_OUT);
-            clientSocket.receive(recPkt);
-            Mensagem response = getMessageFromDatagramPacket(recPkt);
-            return response.getRequestType();
-        }  catch (SocketTimeoutException e) {
-            return "Error";
-        } catch (IOException e) {
-            e.printStackTrace();
-            return e.getMessage();
-        }
-    }
-
-    private static void sendLeaveRequest() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
-            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
-            if(Objects.nonNull(ip) && Objects.nonNull(port) && Objects.nonNull(filesList)) {
-                Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
-                DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-                clientSocket.send(sendPacket);
-            } else {
-                getInfo();
-                sendLeaveRequest();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println(e.getMessage());
-        }
     }
 
     private static int menu() {
@@ -115,33 +67,99 @@ public class Peer {
         return opt;
     }
 
-    private static int validateMenuOption(String optString) {
-        int opt;
-        try {
-            opt = Integer.parseInt(optString);
-        }catch (NumberFormatException e){
-            System.out.println("Digite um valor numérico");
-            return -1;
-        }
-        return opt;
+    private static void search() {
+        final Scanner sc = new Scanner(System.in);
+        System.out.println("Digite o nome do arquivo:");
+        String requestedFile = sc.nextLine();
+        Thread searchThread = new Thread(()->{
+            boolean searchOk = false;
+            do {
+                sendSearchRequest(requestedFile);
+                Mensagem response = receiveResponse();
+                printSearchInfo(response);
+                if (response.getRequestType().equals("SEARCH_OK")) {
+                    searchOk = true;
+                }
+            }while (!searchOk);
+        });
+        searchThread.start();
+    }
+
+    private static boolean leave() {
+        Thread leaveThread = new Thread(()->{
+            boolean leaveOk = false;
+            do {
+                sendLeaveRequest();
+                Mensagem response = receiveResponse();
+                if (response.getRequestType().equals("LEAVE_OK")) {
+                    leaveOk = true;
+                }
+            }while (!leaveOk);
+        });
+        leaveThread.start();
+        return true;
     }
 
     private static void join() {
-        getInfo();
+        getPeerInfo();
         //TODO dúvida: join deve ser totalmente assíncrono ou não? caso não, as outras operações poderão ser feitas sem fazer o join
         Thread joinThread = new Thread(() -> {
             boolean joinOk = false;
             //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
             do {
                 sendJoinRequest();
-                String response = receiveResponse();
-                if (response.equals("JOIN_OK")) {
+                Mensagem response = receiveResponse();
+                if (response.getRequestType().equals("JOIN_OK")) {
                     joinOk = true;
                     printJoinInfo();
                 }
             }while (!joinOk);
         });
         joinThread.start();
+    }
+
+    private static Mensagem receiveResponse() {
+        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+            byte[] recBuffer = new byte[1024];
+            DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+            clientSocket.setSoTimeout(TIME_OUT);
+            clientSocket.receive(recPkt);
+            return getMessageFromDatagramPacket(recPkt);
+        }  catch (SocketTimeoutException e) {
+            return new Mensagem("Error");
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new Mensagem("Error");
+        }
+    }
+
+    private static void sendSearchRequest(String requestedFile){
+        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
+            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
+            Mensagem joinMessage = new Mensagem("SEARCH", ip, port, requestedFile);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+            clientSocket.send(sendPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println(e.getMessage());
+        }
+    }
+
+    private static void sendLeaveRequest() {
+        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
+            if(Objects.nonNull(ip) && Objects.nonNull(filesList)) {
+                Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
+                DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+                clientSocket.send(sendPacket);
+            } else {
+                getPeerInfo();
+                sendLeaveRequest();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println(e.getMessage());
+        }
     }
 
     private static void sendJoinRequest() {
@@ -155,6 +173,17 @@ public class Peer {
             System.err.println(e.getMessage());
         }
 
+    }
+
+    private static int validateMenuOption(String optString) {
+        int opt;
+        try {
+            opt = Integer.parseInt(optString);
+        }catch (NumberFormatException e){
+            System.out.println("Digite um valor numérico");
+            return -1;
+        }
+        return opt;
     }
 
     private static Mensagem getMessageFromDatagramPacket(DatagramPacket recPkt) {
@@ -182,7 +211,14 @@ public class Peer {
         System.out.println(infos);
     }
 
-    private static void getInfo() {
+    private static void printSearchInfo(Mensagem message){
+        System.out.print("peers com arquivo solicitado: ");
+        message.getPeersWithRequestedFiles()
+                .forEach(p -> System.out.print(p + " "));
+        System.out.println();
+    }
+
+    private static void getPeerInfo() {
         Scanner sc = new Scanner(System.in);
         System.out.println("Endereço de Ip:");
         getAddress(sc);
