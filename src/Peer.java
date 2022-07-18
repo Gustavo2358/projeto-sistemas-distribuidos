@@ -8,11 +8,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-//TODO search pode ser feito com informações null
 //TODO no timeout do search é retornado um null ao invés da lista
 public class Peer {
 
@@ -26,6 +24,7 @@ public class Peer {
     private static List<String> filesList;
 
     public static void main(String[] args) {
+        getPeerInfo();
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -101,7 +100,6 @@ public class Peer {
     }
 
     private static void join() {
-        getPeerInfo();
         //TODO dúvida: join deve ser totalmente assíncrono ou não? caso não, as outras operações poderão ser feitas sem fazer o join
         Thread joinThread = new Thread(() -> {
             boolean joinOk = false;
@@ -148,14 +146,9 @@ public class Peer {
     private static void sendLeaveRequest() {
         try (DatagramSocket clientSocket = new DatagramSocket(port)){
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
-            if(Objects.nonNull(ip) && Objects.nonNull(filesList)) {
-                Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
-                DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-                clientSocket.send(sendPacket);
-            } else {
-                getPeerInfo();
-                sendLeaveRequest();
-            }
+            Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+            clientSocket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println(e.getMessage());
@@ -212,10 +205,14 @@ public class Peer {
     }
 
     private static void printSearchInfo(Mensagem message){
-        System.out.print("peers com arquivo solicitado: ");
-        message.getPeersWithRequestedFiles()
-                .forEach(p -> System.out.print(p + " "));
-        System.out.println();
+        try {
+            System.out.print("peers com arquivo solicitado: ");
+            message.getPeersWithRequestedFiles()
+                    .forEach(p -> System.out.print(p + " "));
+            System.out.println();
+        } catch (NullPointerException e){
+            System.out.println("sem informações do peer");
+        }
     }
 
     private static void getPeerInfo() {
