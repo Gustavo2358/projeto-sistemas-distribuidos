@@ -19,7 +19,10 @@ public class Servidor {
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
+        handleRequests();
+    }
 
+    private static void handleRequests() {
         try {
             DatagramSocket socket = new DatagramSocket(10098);
             //noinspection InfiniteLoopStatement

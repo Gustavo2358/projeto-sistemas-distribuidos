@@ -1,6 +1,5 @@
 import com.google.gson.Gson;
 
-import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +25,7 @@ public class Peer {
 
     public static void main(String[] args) {
         getPeerInfo();
+        handleRequestsThread();
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -48,7 +48,43 @@ public class Peer {
                     break;
             }
         } while (!leaveOk);
+        System.out.println("saiu do loop");
+    }
 
+    private static void handleRequestsThread() {
+        Thread thread = new Thread(()->{
+        try {
+            DatagramSocket socket = new DatagramSocket(port);
+            loop:
+            while (true) {
+                DatagramPacket receivedPacket = listenToIncomingMessages(socket);
+                Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
+                switch (receivedMessage.getRequestType()) {
+                    case "ALIVE":
+                        sendAliveOk();
+                        break;
+                    case "DOWNLOAD":
+                        break;
+                    case "END":
+                        break loop;
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        });
+        thread.start();
+    }
+
+    private static void sendAliveOk() {
+        System.out.println("Caiu no case ALIVE");
+    }
+
+    private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
+        byte[] recBuffer = new byte[1024];
+        DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+        serverSocket.receive(recPkt);
+        return recPkt;
     }
 
     private static int menu() {
@@ -97,10 +133,12 @@ public class Peer {
                     leaveOk = true;
                 }
             }while (!leaveOk);
+            sendEndRequest(leaveSocket);
         });
         leaveThread.start();
         return true;
     }
+
 
     private static void join() {
         //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
@@ -158,6 +196,18 @@ public class Peer {
         }
     }
 
+    private static void sendEndRequest(DatagramSocket socket) {
+        try {
+            InetAddress localHost = InetAddress.getByName("127.0.0.1");
+            Mensagem joinMessage = new Mensagem("END");
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, port, joinMessage);
+            socket.send(sendPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
     private static void sendJoinRequest(DatagramSocket socket) {
         try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
@@ -166,7 +216,6 @@ public class Peer {
             socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
-            System.err.println(e.getMessage());
         }
 
     }
