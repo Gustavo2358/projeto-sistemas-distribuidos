@@ -8,7 +8,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Scanner;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 //TODO no timeout do search é retornado um null ao invés da lista
@@ -22,9 +25,12 @@ public class Peer {
     private static int port;
     private static Path directoryPath;
     private static List<String> filesList;
+    private static ArrayBlockingQueue<Mensagem> requestsQueue = new ArrayBlockingQueue<>(10);
 
     public static void main(String[] args) {
         getPeerInfo();
+        listenToConnections(port);
+
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -48,6 +54,44 @@ public class Peer {
             }
         } while (!leaveOk);
 
+    }
+
+    private static void listenToConnections(int port) {
+        Thread thread = new Thread(() -> {
+            try {
+                DatagramSocket socket = new DatagramSocket(port);
+                while (true){
+                    byte[] recBuffer = new byte[1024];
+                    DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+                    socket.receive(recPkt);
+                    Mensagem receivedMessage = getMessageFromDatagramPacket(recPkt);
+                    if(receivedMessage.getRequestType().equals("ALIVE"))
+                        sendAliveOk(recPkt, socket);
+                    else {
+                        requestsQueue.add(receivedMessage);
+                        System.out.println("mensagem adicionada" + receivedMessage.getRequestType());
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        thread.start();
+    }
+
+    private static void sendAliveOk(DatagramPacket packet, DatagramSocket socket) throws IOException {
+        Mensagem aliveOk = new Mensagem("ALIVE_OK");
+        System.out.println("DEBUG" + packet.getPort());
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(packet.getAddress(), packet.getPort() , aliveOk);
+        socket.send(sendPacket);
+
+    }
+
+    private static Mensagem getMessageFromSocket(DatagramSocket socket) throws IOException {
+        byte[] recBuffer = new byte[1024];
+        DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+        socket.receive(recPkt);
+        return getMessageFromDatagramPacket(recPkt);
     }
 
     private static int menu() {
@@ -74,7 +118,7 @@ public class Peer {
             boolean searchOk = false;
             do {
                 sendSearchRequest(requestedFile);
-                Mensagem response = receiveResponse();
+                Mensagem response = findResponse("SEARCH_OK");
                 printSearchInfo(response);
                 if (response.getRequestType().equals("SEARCH_OK")) {
                     searchOk = true;
@@ -88,8 +132,9 @@ public class Peer {
         Thread leaveThread = new Thread(()->{
             boolean leaveOk = false;
             do {
+                sleep(1000);
                 sendLeaveRequest();
-                Mensagem response = receiveResponse();
+                Mensagem response = findResponse("LEAVE_OK");
                 if (response.getRequestType().equals("LEAVE_OK")) {
                     leaveOk = true;
                 }
@@ -99,6 +144,14 @@ public class Peer {
         return true;
     }
 
+    private static void sleep(int milli) {
+        try {
+            Thread.sleep(milli);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
     private static void join() {
         //TODO dúvida: join deve ser totalmente assíncrono ou não? caso não, as outras operações poderão ser feitas sem fazer o join
         Thread joinThread = new Thread(() -> {
@@ -106,14 +159,32 @@ public class Peer {
             //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
             do {
                 sendJoinRequest();
-                Mensagem response = receiveResponse();
+                try {
+                    Thread.sleep(TIME_OUT);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                Mensagem response = findResponse("JOIN_OK");
                 if (response.getRequestType().equals("JOIN_OK")) {
                     joinOk = true;
                     printJoinInfo();
                 }
             }while (!joinOk);
+
         });
         joinThread.start();
+    }
+    private static Mensagem findResponse(String requestType){
+        Optional<Mensagem> response = requestsQueue.stream()
+                .filter(m -> m.getRequestType().equals( requestType))
+                .findFirst();
+        if(response.isPresent())
+            return response.get();
+
+        return new Mensagem("NOT_FOUND");
+
+
+
     }
 
     private static Mensagem receiveResponse() {
@@ -132,7 +203,7 @@ public class Peer {
     }
 
     private static void sendSearchRequest(String requestedFile){
-        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
+        try(DatagramSocket clientSocket = new DatagramSocket()) {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("SEARCH", ip, port, requestedFile);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
@@ -144,7 +215,7 @@ public class Peer {
     }
 
     private static void sendLeaveRequest() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+        try (DatagramSocket clientSocket = new DatagramSocket()){
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
@@ -156,7 +227,7 @@ public class Peer {
     }
 
     private static void sendJoinRequest() {
-        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
+        try(DatagramSocket clientSocket = new DatagramSocket()) {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
@@ -191,7 +262,8 @@ public class Peer {
         //TODO debug, apagar depois
         System.out.println("Json enviado para o Servidor: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
-        return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
+        DatagramPacket packet =  new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
+        return packet;
     }
 
     private static void printJoinInfo() {
@@ -211,7 +283,8 @@ public class Peer {
                     .forEach(p -> System.out.print(p + " "));
             System.out.println();
         } catch (NullPointerException e){
-            System.out.println("sem informações do peer");
+            //TODO debug, imprime caso o search não receba resposta
+            System.out.println("Servidor não respondeu, tentando novamente");
         }
     }
 

@@ -1,10 +1,7 @@
 import com.google.gson.Gson;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -74,11 +71,65 @@ public class Servidor {
             try {
                 handleJoinRequest(receivedMessage);
                 sendOkResponse(socket, receivedMessage, "JOIN_OK");
+                checkIfPeerIsAlive(receivedMessage);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
         joinThread.start();
+    }
+
+    private static void checkIfPeerIsAlive(Mensagem receivedMessage) {
+        try (DatagramSocket datagramSocket = new DatagramSocket()){
+            Mensagem alive = new Mensagem("ALIVE");
+            Gson gson = new Gson();
+            String messageJson = gson.toJson(alive);
+            byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
+            byte[] receiveBuf = new byte[1024];
+            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receivedMessage.getIp(), receivedMessage.getPort());
+            DatagramPacket receivePacket = new DatagramPacket(receiveBuf, receiveBuf.length);
+            while (true) {
+                System.out.printf("mandando requisição ALIVE para %s:%d %n", receivedMessage.getIp(), receivedMessage.getPort());
+
+                datagramSocket.send(sendPacket);
+                Mensagem mensagem;
+                try {
+                    datagramSocket.setSoTimeout(2000);
+                    datagramSocket.receive(receivePacket);
+                    String recData = new String(receivePacket.getData(), receivePacket.getOffset(), receivePacket.getLength());
+                    mensagem = gson.fromJson(recData, Mensagem.class);
+                } catch(SocketTimeoutException e){
+                    mensagem = new Mensagem("Error");
+                }
+                if (mensagem.getRequestType().equals("ALIVE_OK")) {
+                    //TODO trocar para 30
+                    System.out.println("Alive ok recebido");
+                    Thread.sleep(5 * 1000);
+                }
+                else {
+                    break;
+                }
+            }
+        } catch (SocketException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        peerIsDead(receivedMessage.getIp(), receivedMessage.getPort());
+
+    }
+
+    private static void peerIsDead(InetAddress ip, int port) {
+       //TODO remover arquivos
+        InetSocketAddress dead = new InetSocketAddress(ip, port);
+        String files = peers.get(dead).stream()
+                .map(f -> f + " ")
+                .collect(Collectors.joining());
+        System.out.printf("Peer %s:%d morto. Eliminando seus arquivos %s%n", ip, port, files);
+        peers.remove(dead);
     }
 
     private static List<InetSocketAddress> handleSearchRequest(Mensagem receivedMessage) {

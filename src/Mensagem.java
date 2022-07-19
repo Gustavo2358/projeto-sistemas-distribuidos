@@ -36,6 +36,12 @@ public class Mensagem {
         this.peersWithRequestedFiles = peersWithRequestedFiles;
     }
 
+    public Mensagem(String requestType, InetAddress ip, int port) {
+        this.requestType = requestType;
+        this.ip = ip;
+        this.port = port;
+    }
+
     public String getRequestType() {
         return requestType;
     }
