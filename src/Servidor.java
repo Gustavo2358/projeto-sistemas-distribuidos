@@ -24,17 +24,18 @@ public class Servidor {
             DatagramSocket socket = new DatagramSocket(10098);
             //noinspection InfiniteLoopStatement
             do {
-                Mensagem receivedMessage = listenToIncomingMessages(socket);
+                DatagramPacket receivedPacket = listenToIncomingMessages(socket);
+                Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
                 switch (receivedMessage.getRequestType()) {
                     case "JOIN":
                         //cria uma thread para requisição JOIN
-                        join(socket, receivedMessage);
+                        join(socket, receivedPacket, receivedMessage);
                         break;
                     case "SEARCH":
-                        search(socket, receivedMessage);
+                        search(socket, receivedPacket, receivedMessage);
                         break;
                     case "LEAVE":
-                        leave(socket, receivedMessage);
+                        leave(socket, receivedPacket, receivedMessage);
                         break;
                 }
             } while (true);
@@ -43,11 +44,11 @@ public class Servidor {
         }
     }
 
-    private static void search(DatagramSocket socket, Mensagem receivedMessage) {
+    private static void search(DatagramSocket socket, DatagramPacket receivedPacket,  Mensagem receivedMessage) {
         Thread searchThread = new Thread(() -> {
             List<InetSocketAddress> peersWithRequestedFiles = handleSearchRequest(receivedMessage);
             try {
-                sendSearchResult(socket, receivedMessage, peersWithRequestedFiles);
+                sendSearchResult(socket, receivedPacket, peersWithRequestedFiles);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -56,11 +57,11 @@ public class Servidor {
     }
 
 
-    private static void leave(DatagramSocket socket, Mensagem receivedMessage) {
+    private static void leave(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
         Thread leaveThread = new Thread(()-> {
             try {
                 handleLeaveRequest(receivedMessage);
-                sendOkResponse(socket, receivedMessage, "LEAVE_OK");
+                sendOkResponse(socket, receivedPacket, "LEAVE_OK");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -69,11 +70,11 @@ public class Servidor {
     }
 
 
-    private static void join(DatagramSocket socket, Mensagem receivedMessage) {
+    private static void join(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
         Thread joinThread = new Thread(()-> {
             try {
                 handleJoinRequest(receivedMessage);
-                sendOkResponse(socket, receivedMessage, "JOIN_OK");
+                sendOkResponse(socket, receivedPacket, "JOIN_OK");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -109,18 +110,18 @@ public class Servidor {
 
     }
 
-    private static void sendSearchResult(DatagramSocket socket, Mensagem receivedMessage, List<InetSocketAddress> peersWithRequestedFiles) throws IOException {
+    private static void sendSearchResult(DatagramSocket socket, DatagramPacket receivedPacket, List<InetSocketAddress> peersWithRequestedFiles) throws IOException {
         List<String> peersString = peersWithRequestedFiles.stream()
                 .map(i -> String.format("%s:%d",i.getAddress().toString(),i.getPort()))
                 .collect(Collectors.toList());
         Mensagem searchOkMessage = new Mensagem("SEARCH_OK", peersString);
-        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), searchOkMessage);
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), searchOkMessage);
         socket.send(sendPacket);
     }
 
-    private static void sendOkResponse(DatagramSocket socket, Mensagem receivedMessage, String okType) throws IOException {
+    private static void sendOkResponse(DatagramSocket socket, DatagramPacket receivedPacket, String okType) throws IOException {
         Mensagem OkMessage = new Mensagem(okType);
-        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedMessage.getIp(), receivedMessage.getPort(), OkMessage);
+        DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), OkMessage);
 
         //TODO debug, apagar depois, imprime estado atual do peers
         System.out.println("Arquivos no map peers:");
@@ -135,11 +136,11 @@ public class Servidor {
         socket.send(sendPacket);
     }
 
-    private static Mensagem listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
+    private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
         byte[] recBuffer = new byte[1024];
         DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
         serverSocket.receive(recPkt);
-        return getMessageFromDatagramPacket(recPkt);
+        return recPkt;
     }
 
     private static Mensagem getMessageFromDatagramPacket(DatagramPacket recPkt) {
