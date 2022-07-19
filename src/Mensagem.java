@@ -1,4 +1,5 @@
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.List;
 
 public class Mensagem {
@@ -7,6 +8,7 @@ public class Mensagem {
     private Integer port;
     private List<String> files;
     private String requestedFile;
+    private List<String> peersWithRequestedFiles;
 
     public Mensagem() {
     }
@@ -18,8 +20,20 @@ public class Mensagem {
         this.files = files;
     }
 
+    public Mensagem(String requestType, InetAddress ip, int port, String requestedFile) {
+        this.requestType = requestType;
+        this.ip = ip;
+        this.port = port;
+        this.requestedFile = requestedFile;
+    }
+
     public Mensagem(String requestType) {
         this.requestType = requestType;
+    }
+
+    public Mensagem(String requestType, List<String> peersWithRequestedFiles) {
+        this.requestType = requestType;
+        this.peersWithRequestedFiles = peersWithRequestedFiles;
     }
 
     public String getRequestType() {
@@ -42,4 +56,7 @@ public class Mensagem {
         return requestedFile;
     }
 
+    public List<String> getPeersWithRequestedFiles() {
+        return peersWithRequestedFiles;
+    }
 }
