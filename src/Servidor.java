@@ -1,14 +1,12 @@
 import com.google.gson.Gson;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /*TODO duvida: caso mande o Ip errado, ele nunca irá parar de mandar a requisição para o servidor, e nunca irá receber
@@ -63,7 +61,7 @@ public class Servidor {
     private static void leave(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
         Thread leaveThread = new Thread(()-> {
             try {
-                handleLeaveRequest(receivedMessage);
+                removePeerFiles(receivedMessage);
                 sendOkResponse(socket, receivedPacket, "LEAVE_OK");
             } catch (IOException e) {
                 e.printStackTrace();
@@ -81,8 +79,59 @@ public class Servidor {
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            alive(receivedPacket);
         });
         joinThread.start();
+    }
+
+    private static void alive(DatagramPacket receivedPacket) {
+        Mensagem message = getMessageFromDatagramPacket(receivedPacket);
+        Thread aliveThread = new Thread(() -> {
+            try {
+                DatagramSocket socket= new DatagramSocket();
+                Mensagem AliveMessage = new Mensagem("ALIVE");
+                DatagramPacket sendPacket = getDatagramPacketFromMessage(message.getIp(), message.getPort(), AliveMessage);
+                while(true) {
+                    System.out.println("Mandando Alive");
+                    socket.send(sendPacket);
+                    byte[] buf = new byte[1024];
+                    DatagramPacket receivedAliveOk = new DatagramPacket(buf, buf.length);
+                    socket.setSoTimeout(2000);
+                    socket.receive(receivedAliveOk);
+                    Mensagem receivedMessage = getMessageFromDatagramPacket(receivedAliveOk);
+                    System.out.println(receivedMessage.getRequestType());
+                    if (receivedMessage.getRequestType().equals("ALIVE_OK")) {
+                        System.out.println("Alive Ok recebido");
+                        sleep(30 * 1000);
+                    }else{
+                        break;
+                    }
+                }
+                deadPeer(getMessageFromDatagramPacket(receivedPacket));
+            } catch (SocketTimeoutException e){
+                deadPeer(getMessageFromDatagramPacket(receivedPacket));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        aliveThread.start();
+    }
+
+    private static void deadPeer(Mensagem message) {
+        String messageFilesString = message.getFiles().stream()
+                .map(f -> f + " ")
+                .collect(Collectors.joining());
+        System.out.printf("Peer %s:%d morto. Eliminando seus arquivos %s%n", message.getIp(), message.getPort(), messageFilesString);
+        removePeerFiles(message);
+    }
+
+
+    private static void sleep(int milli) {
+        try {
+            Thread.sleep(milli);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     private static List<InetSocketAddress> handleSearchRequest(Mensagem receivedMessage) {
@@ -95,7 +144,7 @@ public class Servidor {
                 .collect(Collectors.toList());
     }
 
-    private static void handleLeaveRequest(Mensagem receivedMessage) throws IOException{
+    private static void removePeerFiles(Mensagem receivedMessage) {
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
         peers.remove(peerAddress);
     }

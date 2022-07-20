@@ -53,31 +53,41 @@ public class Peer {
 
     private static void handleRequestsThread() {
         Thread thread = new Thread(()->{
-        try {
-            DatagramSocket socket = new DatagramSocket(port);
-            loop:
-            while (true) {
-                DatagramPacket receivedPacket = listenToIncomingMessages(socket);
-                Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
-                switch (receivedMessage.getRequestType()) {
-                    case "ALIVE":
-                        sendAliveOk();
-                        break;
-                    case "DOWNLOAD":
-                        break;
-                    case "END":
-                        break loop;
+            try {
+                DatagramSocket socket = new DatagramSocket(port);
+                loop:
+                while (true) {
+                    DatagramPacket receivedPacket = listenToIncomingMessages(socket);
+                    Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
+                    switch (receivedMessage.getRequestType()) {
+                        case "ALIVE":
+                            System.out.println("Recebeu alive request");
+                            sendAliveOk(receivedPacket);
+                            break;
+                        case "DOWNLOAD":
+                            break;
+                        case "END":
+                            break loop;
+                    }
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
         });
         thread.start();
     }
 
-    private static void sendAliveOk() {
+    private static void sendAliveOk(DatagramPacket receivedPacket) {
         System.out.println("Caiu no case ALIVE");
+        Mensagem aliveOk = new Mensagem("ALIVE_OK");
+        DatagramPacket aliveOKPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), aliveOk);
+        DatagramSocket socket;
+        try {
+            socket = new DatagramSocket();
+            socket.send(aliveOKPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
@@ -206,7 +216,6 @@ public class Peer {
             e.printStackTrace();
         }
     }
-
 
     private static void sendJoinRequest(DatagramSocket socket) {
         try {
