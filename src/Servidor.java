@@ -5,6 +5,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -118,13 +119,14 @@ public class Servidor {
     }
 
     private static void deadPeer(Mensagem message) {
-        String messageFilesString = message.getFiles().stream()
-                .map(f -> f + " ")
-                .collect(Collectors.joining());
-        System.out.printf("Peer %s:%d morto. Eliminando seus arquivos %s%n", message.getIp(), message.getPort(), messageFilesString);
-        removePeerFiles(message);
+        List<String> value = removePeerFiles(message);
+        if (Objects.nonNull(value)) {
+            String messageFilesString = message.getFiles().stream()
+                    .map(f -> f + " ")
+                    .collect(Collectors.joining());
+            System.out.printf("Peer %s:%d morto. Eliminando seus arquivos %s%n", message.getIp(), message.getPort(), messageFilesString);
+        }
     }
-
 
     private static void sleep(int milli) {
         try {
@@ -144,9 +146,10 @@ public class Servidor {
                 .collect(Collectors.toList());
     }
 
-    private static void removePeerFiles(Mensagem receivedMessage) {
+    private static List<String> removePeerFiles(Mensagem receivedMessage) {
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
-        peers.remove(peerAddress);
+        return peers.remove(peerAddress);
+
     }
 
     private static void handleJoinRequest(Mensagem receivedMessage) throws IOException {
