@@ -25,6 +25,7 @@ public class Peer {
 
     public static void main(String[] args) {
         getPeerInfo();
+        handleRequestsThread();
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -47,7 +48,53 @@ public class Peer {
                     break;
             }
         } while (!leaveOk);
+        System.out.println("saiu do loop");
+    }
 
+    private static void handleRequestsThread() {
+        Thread thread = new Thread(()->{
+            try {
+                DatagramSocket socket = new DatagramSocket(port);
+                loop:
+                while (true) {
+                    DatagramPacket receivedPacket = listenToIncomingMessages(socket);
+                    Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
+                    switch (receivedMessage.getRequestType()) {
+                        case "ALIVE":
+                            System.out.println("Recebeu alive request");
+                            sendAliveOk(receivedPacket);
+                            break;
+                        case "DOWNLOAD":
+                            break;
+                        case "END":
+                            break loop;
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        thread.start();
+    }
+
+    private static void sendAliveOk(DatagramPacket receivedPacket) {
+        System.out.println("Caiu no case ALIVE");
+        Mensagem aliveOk = new Mensagem("ALIVE_OK");
+        DatagramPacket aliveOKPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), aliveOk);
+        DatagramSocket socket;
+        try {
+            socket = new DatagramSocket();
+            socket.send(aliveOKPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
+        byte[] recBuffer = new byte[1024];
+        DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+        serverSocket.receive(recPkt);
+        return recPkt;
     }
 
     private static int menu() {
@@ -72,9 +119,10 @@ public class Peer {
         String requestedFile = sc.nextLine();
         Thread searchThread = new Thread(()->{
             boolean searchOk = false;
+            DatagramSocket socket = getDatagramSocket();
             do {
-                sendSearchRequest(requestedFile);
-                Mensagem response = receiveResponse();
+                sendSearchRequest(requestedFile, socket);
+                Mensagem response = receiveResponse(socket);
                 printSearchInfo(response);
                 if (response.getRequestType().equals("SEARCH_OK")) {
                     searchOk = true;
@@ -87,26 +135,29 @@ public class Peer {
     private static boolean leave() {
         Thread leaveThread = new Thread(()->{
             boolean leaveOk = false;
+            DatagramSocket leaveSocket = getDatagramSocket();
             do {
-                sendLeaveRequest();
-                Mensagem response = receiveResponse();
+                sendLeaveRequest(leaveSocket);
+                Mensagem response = receiveResponse(leaveSocket);
                 if (response.getRequestType().equals("LEAVE_OK")) {
                     leaveOk = true;
                 }
             }while (!leaveOk);
+            sendEndRequest(leaveSocket);
         });
         leaveThread.start();
         return true;
     }
 
+
     private static void join() {
-        //TODO dúvida: join deve ser totalmente assíncrono ou não? caso não, as outras operações poderão ser feitas sem fazer o join
+        //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
         Thread joinThread = new Thread(() -> {
             boolean joinOk = false;
-            //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
+            DatagramSocket joinSocket = getDatagramSocket();
             do {
-                sendJoinRequest();
-                Mensagem response = receiveResponse();
+                sendJoinRequest(joinSocket);
+                Mensagem response = receiveResponse(joinSocket);
                 if (response.getRequestType().equals("JOIN_OK")) {
                     joinOk = true;
                     printJoinInfo();
@@ -116,12 +167,12 @@ public class Peer {
         joinThread.start();
     }
 
-    private static Mensagem receiveResponse() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+    private static Mensagem receiveResponse(DatagramSocket socket) {
+        try {
             byte[] recBuffer = new byte[1024];
             DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
-            clientSocket.setSoTimeout(TIME_OUT);
-            clientSocket.receive(recPkt);
+            socket.setSoTimeout(TIME_OUT);
+            socket.receive(recPkt);
             return getMessageFromDatagramPacket(recPkt);
         }  catch (SocketTimeoutException e) {
             return new Mensagem("Error");
@@ -131,39 +182,49 @@ public class Peer {
         }
     }
 
-    private static void sendSearchRequest(String requestedFile){
-        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
+    private static void sendSearchRequest(String requestedFile, DatagramSocket socket){
+        try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("SEARCH", ip, port, requestedFile);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-            clientSocket.send(sendPacket);
+            socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println(e.getMessage());
         }
     }
 
-    private static void sendLeaveRequest() {
-        try (DatagramSocket clientSocket = new DatagramSocket(port)){
+    private static void sendLeaveRequest(DatagramSocket socket) {
+        try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("LEAVE", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-            clientSocket.send(sendPacket);
+            socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println(e.getMessage());
         }
     }
 
-    private static void sendJoinRequest() {
-        try(DatagramSocket clientSocket = new DatagramSocket(port)) {
+    private static void sendEndRequest(DatagramSocket socket) {
+        try {
+            InetAddress localHost = InetAddress.getByName("127.0.0.1");
+            Mensagem joinMessage = new Mensagem("END");
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, port, joinMessage);
+            socket.send(sendPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void sendJoinRequest(DatagramSocket socket) {
+        try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
-            clientSocket.send(sendPacket);
+            socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
-            System.err.println(e.getMessage());
         }
 
     }
@@ -269,6 +330,15 @@ public class Peer {
         } catch (IOException e) {
             e.printStackTrace();
             return new ArrayList<>();
+        }
+    }
+
+    private static DatagramSocket getDatagramSocket() {
+        try {
+            return new DatagramSocket();
+        } catch (SocketException e) {
+            e.printStackTrace();
+            return null;
         }
     }
 
