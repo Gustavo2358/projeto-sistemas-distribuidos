@@ -1,6 +1,6 @@
 import com.google.gson.Gson;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +22,8 @@ public class Peer {
     private static int port;
     private static Path directoryPath;
     private static List<String> filesList;
+    private static String requestedFile;
+    private static List<String> peersWithRequestedFile;
 
     public static void main(String[] args) {
         getPeerInfo();
@@ -38,6 +40,7 @@ public class Peer {
                     break;
                 case 3:
                     System.out.println("em construção");
+                    download();
                     break;
                 case 4:
                     System.out.println("Leaving...");
@@ -113,17 +116,57 @@ public class Peer {
         return opt;
     }
 
+    private static void download(){
+//        System.out.println(server.getLocalPort());
+        InetSocketAddress address = getDownloadPeerAddress();
+        Thread downloadThread = new Thread(() -> {
+            try {
+                //socket
+                ServerSocket server = new ServerSocket(0);
+                Socket socket = server.accept();
+                //in
+                InputStream inputStream = socket.getInputStream();
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+                //out
+                OutputStream outputStream = new FileOutputStream(directoryPath + "/" + requestedFile);
+                byte[] buffer = new byte[1024 * 1024];
+                int read;
+                while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
+                    if(new String(buffer, 0, 15).equals("DOWNLOAD_NEGADO")) {
+                        System.out.println("Download negado");
+                        break;
+                    }
+                    outputStream.write(buffer, 0, read);
+                }
+            }catch (IOException e){
+                e.printStackTrace();
+            }
+        });
+        downloadThread.start();
+
+    }
+
+    private static InetSocketAddress getDownloadPeerAddress() {
+        Scanner sc = new Scanner(System.in);
+        System.out.println("Digite o ip do peer que irá enviar o arquivo: ");
+        InetAddress hostIp = getAddress(sc);
+        System.out.println("Digite o número da porta do peer que irá enviar o arquivo: ");
+        Integer hostPort = getPort(sc);
+        return new InetSocketAddress(hostIp, hostPort);
+    }
+
     private static void search() {
         final Scanner sc = new Scanner(System.in);
         System.out.println("Digite o nome do arquivo:");
-        String requestedFile = sc.nextLine();
+        requestedFile = sc.nextLine();
         Thread searchThread = new Thread(()->{
             boolean searchOk = false;
             DatagramSocket socket = getDatagramSocket();
             do {
-                sendSearchRequest(requestedFile, socket);
+                sendSearchRequest(socket);
                 Mensagem response = receiveResponse(socket);
-                printSearchInfo(response);
+                peersWithRequestedFile = response.getPeersWithRequestedFiles();
+                printSearchInfo();
                 if (response.getRequestType().equals("SEARCH_OK")) {
                     searchOk = true;
                 }
@@ -182,7 +225,7 @@ public class Peer {
         }
     }
 
-    private static void sendSearchRequest(String requestedFile, DatagramSocket socket){
+    private static void sendSearchRequest(DatagramSocket socket){
         try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("SEARCH", ip, port, requestedFile);
@@ -265,10 +308,10 @@ public class Peer {
         System.out.println(infos);
     }
 
-    private static void printSearchInfo(Mensagem message){
+    private static void printSearchInfo(){
         try {
             System.out.print("peers com arquivo solicitado: ");
-            message.getPeersWithRequestedFiles()
+            peersWithRequestedFile
                     .forEach(p -> System.out.print(p + " "));
             System.out.println();
         } catch (NullPointerException e){
@@ -279,25 +322,27 @@ public class Peer {
     private static void getPeerInfo() {
         Scanner sc = new Scanner(System.in);
         System.out.println("Endereço de Ip:");
-        getAddress(sc);
+        ip = getAddress(sc);
         System.out.println("Porta:");
-        getPort(sc);
+        port = getPort(sc);
         System.out.println("Nome da pasta: ");
         selectDirectory(sc);
         filesList = getFilesInDirectory(directoryPath);
     }
 
-    private static void getAddress(Scanner sc) {
+    private static InetAddress getAddress(Scanner sc) {
         String ipString = sc.nextLine();
         try {
-            ip = InetAddress.getByName(ipString);
+            return InetAddress.getByName(ipString);
         } catch (UnknownHostException e) {
             e.printStackTrace();
+            System.out.println("Endereço inválido, digite novamente:");
+            return getAddress(sc);
         }
     }
 
-    private static void getPort(Scanner sc) {
-        port = Integer.parseInt(sc.nextLine());
+    private static Integer getPort(Scanner sc) {
+        return Integer.parseInt(sc.nextLine());
     }
 
     private static void selectDirectory(Scanner sc){
