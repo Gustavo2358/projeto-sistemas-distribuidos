@@ -20,6 +20,7 @@ public class Peer {
 
     private static InetAddress ip;
     private static int port;
+    private static int alivePort;
     private static Path directoryPath;
     private static List<String> filesList;
     private static String requestedFile;
@@ -27,7 +28,6 @@ public class Peer {
 
     public static void main(String[] args) {
         getPeerInfo();
-        handleRequestsThread();
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -54,23 +54,19 @@ public class Peer {
         System.out.println("saiu do loop");
     }
 
-    private static void handleRequestsThread() {
+    private static void alive(DatagramSocket socket) {
+        alivePort = socket.getLocalPort();
         Thread thread = new Thread(()->{
             try {
-                DatagramSocket socket = new DatagramSocket(port);
                 loop:
                 while (true) {
                     DatagramPacket receivedPacket = listenToIncomingMessages(socket);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
-                    switch (receivedMessage.getRequestType()) {
-                        case "ALIVE":
-                            System.out.println("Recebeu alive request");
-                            sendAliveOk(receivedPacket);
-                            break;
-                        case "DOWNLOAD":
-                            break;
-                        case "END":
-                            break loop;
+                    if ("ALIVE".equals(receivedMessage.getRequestType())) {
+                        System.out.println("Recebeu alive request");
+                        sendAliveOk(receivedPacket);
+                    } else if ("END".equals(receivedMessage.getRequestType())) {
+                        break loop;
                     }
                 }
             } catch (IOException e) {
@@ -96,7 +92,9 @@ public class Peer {
     private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
         byte[] recBuffer = new byte[1024];
         DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+        serverSocket.setSoTimeout(0);
         serverSocket.receive(recPkt);
+
         return recPkt;
     }
 
@@ -206,8 +204,10 @@ public class Peer {
                     printJoinInfo();
                 }
             }while (!joinOk);
+            alive(joinSocket);
         });
         joinThread.start();
+
     }
 
     private static Mensagem receiveResponse(DatagramSocket socket) {
@@ -253,7 +253,7 @@ public class Peer {
         try {
             InetAddress localHost = InetAddress.getByName("127.0.0.1");
             Mensagem joinMessage = new Mensagem("END");
-            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, port, joinMessage);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, alivePort, joinMessage);
             socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();

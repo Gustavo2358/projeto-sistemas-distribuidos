@@ -86,12 +86,11 @@ public class Servidor {
     }
 
     private static void alive(DatagramPacket receivedPacket) {
-        Mensagem message = getMessageFromDatagramPacket(receivedPacket);
         Thread aliveThread = new Thread(() -> {
             try {
                 DatagramSocket socket= new DatagramSocket();
                 Mensagem AliveMessage = new Mensagem("ALIVE");
-                DatagramPacket sendPacket = getDatagramPacketFromMessage(message.getIp(), message.getPort(), AliveMessage);
+                DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), AliveMessage);
                 while(true) {
                     System.out.println("Mandando Alive");
                     socket.send(sendPacket);
@@ -100,7 +99,6 @@ public class Servidor {
                     socket.setSoTimeout(2000);
                     socket.receive(receivedAliveOk);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedAliveOk);
-                    System.out.println(receivedMessage.getRequestType());
                     if (receivedMessage.getRequestType().equals("ALIVE_OK")) {
                         System.out.println("Alive Ok recebido");
                         sleep(30 * 1000);
