@@ -1,7 +1,8 @@
 import com.google.gson.Gson;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,12 +21,15 @@ public class Peer {
 
     private static InetAddress ip;
     private static int port;
+    private static int alivePort;
     private static Path directoryPath;
     private static List<String> filesList;
+    private static String requestedFile;
+    private static List<String> peersWithRequestedFile;
 
     public static void main(String[] args) {
         getPeerInfo();
-        handleRequestsThread();
+        listenToDownloadRequests();
         boolean leaveOk = false;
         do {
             int opt = menu();
@@ -37,7 +41,7 @@ public class Peer {
                     search();
                     break;
                 case 3:
-                    System.out.println("em construção");
+                    download();
                     break;
                 case 4:
                     System.out.println("Leaving...");
@@ -51,23 +55,18 @@ public class Peer {
         System.out.println("saiu do loop");
     }
 
-    private static void handleRequestsThread() {
+    private static void alive(DatagramSocket socket) {
+        alivePort = socket.getLocalPort();
         Thread thread = new Thread(()->{
             try {
-                DatagramSocket socket = new DatagramSocket(port);
                 loop:
                 while (true) {
                     DatagramPacket receivedPacket = listenToIncomingMessages(socket);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
-                    switch (receivedMessage.getRequestType()) {
-                        case "ALIVE":
-                            System.out.println("Recebeu alive request");
-                            sendAliveOk(receivedPacket);
-                            break;
-                        case "DOWNLOAD":
-                            break;
-                        case "END":
-                            break loop;
+                    if ("ALIVE".equals(receivedMessage.getRequestType())) {
+                        sendAliveOk(receivedPacket);
+                    } else if ("END".equals(receivedMessage.getRequestType())) {
+                        break loop;
                     }
                 }
             } catch (IOException e) {
@@ -75,10 +74,10 @@ public class Peer {
             }
         });
         thread.start();
+
     }
 
     private static void sendAliveOk(DatagramPacket receivedPacket) {
-        System.out.println("Caiu no case ALIVE");
         Mensagem aliveOk = new Mensagem("ALIVE_OK");
         DatagramPacket aliveOKPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), aliveOk);
         DatagramSocket socket;
@@ -93,7 +92,9 @@ public class Peer {
     private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
         byte[] recBuffer = new byte[1024];
         DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
+        serverSocket.setSoTimeout(0);
         serverSocket.receive(recPkt);
+
         return recPkt;
     }
 
@@ -113,17 +114,123 @@ public class Peer {
         return opt;
     }
 
+
+    //Peer atuando como Servidor
+    private static void listenToDownloadRequests(){
+        Thread listenThread = new Thread(() -> {
+
+            try {
+                ServerSocket serverSocket = new ServerSocket(port);
+                while(true) {
+                    Socket socket = serverSocket.accept();
+                    Thread uploadThread = new Thread(() -> {
+                        try {
+                            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                            String jsonMessage = reader.readLine();
+                            Gson gson = new Gson();
+                            Mensagem message = gson.fromJson(jsonMessage, Mensagem.class);
+                            if (message.getRequestType().equals("DOWNLOAD"))
+                                sendFile(message.getRequestedFile(), socket);
+                            else if(message.getRequestType().equals("END"))
+                                //TODO Implementar end
+                                System.out.println("IMPLEMENTAR END TCP");
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
+                    uploadThread.start();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        listenThread.start();
+    }
+
+    private static void sendFile(String requestedFile, Socket socket) throws IOException {
+        InputStream inputStream = new FileInputStream(directoryPath.toString().concat("/").concat(requestedFile));
+        BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+        OutputStream outputStream = socket.getOutputStream();
+        byte[] buffer = new byte[1024 * 1024];
+        int read;
+        while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
+            outputStream.write(buffer, 0, read);
+        }
+        socket.close();
+
+        //TODO debug, apagar depois
+        System.out.println("ARQUIVO ENVIADO");
+
+    }
+
+    //Peer atuando como cliente
+    private static void download(){
+        InetSocketAddress address = getDownloadPeerAddress();
+        try {
+            //send download request
+            Socket socket = new Socket(address.getAddress(), address.getPort());
+            OutputStream outputStream = socket.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(outputStream);
+            Mensagem message = new Mensagem("DOWNLOAD", requestedFile);
+            Gson gson = new Gson();
+            String jsonMessage = gson.toJson(message);
+            writer.writeBytes(jsonMessage.concat("\n"));
+            //
+            getDownloadResponse(socket);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println(e.getMessage());
+        }
+    }
+
+    private static void getDownloadResponse(Socket socket){
+        Thread downloadThread = new Thread(() -> {
+            try {
+                //in
+                InputStream inputStream = socket.getInputStream();
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
+                //out
+                OutputStream outputStream = new FileOutputStream(directoryPath + "/" + requestedFile);
+                byte[] buffer = new byte[1024 * 1024];
+                int read;
+                while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
+                    if(new String(buffer, 0, 15).equals("DOWNLOAD_NEGADO")) {
+                        System.out.println("Download negado");
+                        break;
+                    }
+                    outputStream.write(buffer, 0, read);
+                }
+                System.out.println("Arquivo recebido, falta fazer o UPDATE");
+                socket.close();
+            }catch (IOException e){
+                e.printStackTrace();
+            }
+        });
+        downloadThread.start();
+    }
+
+    private static InetSocketAddress getDownloadPeerAddress() {
+        Scanner sc = new Scanner(System.in);
+        System.out.println("Digite o ip do peer que irá enviar o arquivo: ");
+        InetAddress hostIp = getAddress(sc);
+        System.out.println("Digite o número da porta do peer que irá enviar o arquivo: ");
+        Integer hostPort = getPort(sc);
+        return new InetSocketAddress(hostIp, hostPort);
+    }
+
     private static void search() {
         final Scanner sc = new Scanner(System.in);
         System.out.println("Digite o nome do arquivo:");
-        String requestedFile = sc.nextLine();
+        requestedFile = sc.nextLine();
         Thread searchThread = new Thread(()->{
             boolean searchOk = false;
             DatagramSocket socket = getDatagramSocket();
             do {
-                sendSearchRequest(requestedFile, socket);
+                sendSearchRequest(socket);
                 Mensagem response = receiveResponse(socket);
-                printSearchInfo(response);
+                peersWithRequestedFile = response.getPeersWithRequestedFiles();
+                printSearchInfo();
                 if (response.getRequestType().equals("SEARCH_OK")) {
                     searchOk = true;
                 }
@@ -143,7 +250,7 @@ public class Peer {
                     leaveOk = true;
                 }
             }while (!leaveOk);
-            sendEndRequest(leaveSocket);
+            //sendEndRequest(leaveSocket);
         });
         leaveThread.start();
         return true;
@@ -163,8 +270,10 @@ public class Peer {
                     printJoinInfo();
                 }
             }while (!joinOk);
+            alive(joinSocket);
         });
         joinThread.start();
+
     }
 
     private static Mensagem receiveResponse(DatagramSocket socket) {
@@ -182,7 +291,9 @@ public class Peer {
         }
     }
 
-    private static void sendSearchRequest(String requestedFile, DatagramSocket socket){
+
+
+    private static void sendSearchRequest(DatagramSocket socket){
         try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("SEARCH", ip, port, requestedFile);
@@ -206,11 +317,12 @@ public class Peer {
         }
     }
 
+    //TODO tem que se comunicar com o socket TCP
     private static void sendEndRequest(DatagramSocket socket) {
         try {
             InetAddress localHost = InetAddress.getByName("127.0.0.1");
             Mensagem joinMessage = new Mensagem("END");
-            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, port, joinMessage);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, alivePort, joinMessage);
             socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
@@ -249,8 +361,8 @@ public class Peer {
     private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
         Gson gson = new Gson();
         String messageJson = gson.toJson(Message);
-        //TODO debug, apagar depois
-        System.out.println("Json enviado para o Servidor: " + messageJson);
+        //TODO debug, Json apagar depois
+        //System.out.println("Json enviado para o Servidor: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
@@ -265,10 +377,10 @@ public class Peer {
         System.out.println(infos);
     }
 
-    private static void printSearchInfo(Mensagem message){
+    private static void printSearchInfo(){
         try {
             System.out.print("peers com arquivo solicitado: ");
-            message.getPeersWithRequestedFiles()
+            peersWithRequestedFile
                     .forEach(p -> System.out.print(p + " "));
             System.out.println();
         } catch (NullPointerException e){
@@ -279,25 +391,27 @@ public class Peer {
     private static void getPeerInfo() {
         Scanner sc = new Scanner(System.in);
         System.out.println("Endereço de Ip:");
-        getAddress(sc);
+        ip = getAddress(sc);
         System.out.println("Porta:");
-        getPort(sc);
+        port = getPort(sc);
         System.out.println("Nome da pasta: ");
         selectDirectory(sc);
         filesList = getFilesInDirectory(directoryPath);
     }
 
-    private static void getAddress(Scanner sc) {
+    private static InetAddress getAddress(Scanner sc) {
         String ipString = sc.nextLine();
         try {
-            ip = InetAddress.getByName(ipString);
+            return InetAddress.getByName(ipString);
         } catch (UnknownHostException e) {
             e.printStackTrace();
+            System.out.println("Endereço inválido, digite novamente:");
+            return getAddress(sc);
         }
     }
 
-    private static void getPort(Scanner sc) {
-        port = Integer.parseInt(sc.nextLine());
+    private static Integer getPort(Scanner sc) {
+        return Integer.parseInt(sc.nextLine());
     }
 
     private static void selectDirectory(Scanner sc){
