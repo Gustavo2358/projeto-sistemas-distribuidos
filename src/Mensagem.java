@@ -36,6 +36,11 @@ public class Mensagem {
         this.peersWithRequestedFiles = peersWithRequestedFiles;
     }
 
+    public Mensagem(String requestType, String requestedFile) {
+        this.requestType = requestType;
+        this.requestedFile = requestedFile;
+    }
+
     public String getRequestType() {
         return requestType;
     }
