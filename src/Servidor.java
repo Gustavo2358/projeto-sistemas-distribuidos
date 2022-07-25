@@ -39,12 +39,28 @@ public class Servidor {
                     case "LEAVE":
                         leave(socket, receivedPacket, receivedMessage);
                         break;
+                    case "UPDATE":
+                        update(socket, receivedPacket, receivedMessage);
                 }
             } while (true);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+    private static void update(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
+
+        Thread joinThread = new Thread(()-> {
+            try {
+                handleUpdateRequest(receivedMessage);
+                sendOkResponse(socket, receivedPacket, "UPDATE_OK");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        joinThread.start();
+    }
+
 
     private static void search(DatagramSocket socket, DatagramPacket receivedPacket,  Mensagem receivedMessage) {
         Thread searchThread = new Thread(() -> {
@@ -99,6 +115,8 @@ public class Servidor {
                     socket.receive(receivedAliveOk);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedAliveOk);
                     if (receivedMessage.getRequestType().equals("ALIVE_OK")) {
+                        //TODO debug, apagar depois
+                        System.out.println("ALIVE OK recebido do peer " + receivedPacket.getPort());
                         sleep(30 * 1000);
                     }else{
                         break;
@@ -145,6 +163,16 @@ public class Servidor {
     private static List<String> removePeerFiles(Mensagem receivedMessage) {
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
         return peers.remove(peerAddress);
+
+    }
+
+    private static void handleUpdateRequest(Mensagem receivedMessage) {
+        InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
+        peers.replace(peerAddress, receivedMessage.getFiles());
+        String messageFilesString = receivedMessage.getFiles().stream()
+                .map(f -> f + " ")
+                .collect(Collectors.joining());
+        System.out.printf("Peer %s:%d atualizado com arquivos %s%n", peerAddress.getAddress(), peerAddress.getPort(), messageFilesString);
 
     }
 

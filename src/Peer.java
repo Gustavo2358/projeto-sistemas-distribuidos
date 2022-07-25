@@ -59,14 +59,13 @@ public class Peer {
         alivePort = socket.getLocalPort();
         Thread thread = new Thread(()->{
             try {
-                loop:
                 while (true) {
                     DatagramPacket receivedPacket = listenToIncomingMessages(socket);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
                     if ("ALIVE".equals(receivedMessage.getRequestType())) {
                         sendAliveOk(receivedPacket);
                     } else if ("END".equals(receivedMessage.getRequestType())) {
-                        break loop;
+                        break;
                     }
                 }
             } catch (IOException e) {
@@ -202,12 +201,33 @@ public class Peer {
                     outputStream.write(buffer, 0, read);
                 }
                 System.out.println("Arquivo recebido, falta fazer o UPDATE");
+                update();
                 socket.close();
             }catch (IOException e){
                 e.printStackTrace();
             }
         });
         downloadThread.start();
+    }
+
+    private static void update() {
+
+        Thread updateThread = new Thread(() -> {
+            filesList = getFilesInDirectory(directoryPath);
+            boolean updateOk = false;
+            DatagramSocket updateSocket = getDatagramSocket();
+            do {
+                sendUpdateRequest(updateSocket);
+                Mensagem response = receiveResponse(updateSocket);
+                if (response.getRequestType().equals("UPDATE_OK")) {
+                    updateOk = true;
+                    //TODO debug, apagar depois
+                    System.out.println("UPDATE_OK");
+                }
+            }while (!updateOk);
+        });
+        updateThread.start();
+
     }
 
     private static InetSocketAddress getDownloadPeerAddress() {
@@ -333,6 +353,18 @@ public class Peer {
         try {
             InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
             Mensagem joinMessage = new Mensagem("JOIN", ip, port, filesList);
+            DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
+            socket.send(sendPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private static void sendUpdateRequest(DatagramSocket socket) {
+        try {
+            InetAddress serverIpAddress = InetAddress.getByName(SERVER_IP);
+            Mensagem joinMessage = new Mensagem("UPDATE", ip, port, filesList);
             DatagramPacket sendPacket = getDatagramPacketFromMessage(serverIpAddress, SERVER_PORT, joinMessage);
             socket.send(sendPacket);
         } catch (IOException e) {
