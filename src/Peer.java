@@ -45,7 +45,8 @@ public class Peer {
                     break;
                 case 4:
                     System.out.println("Leaving...");
-                    leaveOk = leave();
+                    //leaveOk = leave();
+                    leave();
                     break;
                 default:
                     System.out.println("Digite uma opção válida (entre 1 e 4)");
@@ -119,6 +120,7 @@ public class Peer {
         Thread listenThread = new Thread(() -> {
 
             try {
+                //escuta conexões TCP no e IP e porta que o usuário digitou para identificar o Peer
                 ServerSocket serverSocket = new ServerSocket(port);
                 while(true) {
                     Socket socket = serverSocket.accept();
@@ -128,11 +130,14 @@ public class Peer {
                             String jsonMessage = reader.readLine();
                             Gson gson = new Gson();
                             Mensagem message = gson.fromJson(jsonMessage, Mensagem.class);
-                            if (message.getRequestType().equals("DOWNLOAD"))
+                            if (message.getRequestType().equals("DOWNLOAD")){
                                 sendFile(message.getRequestedFile(), socket);
-                            else if(message.getRequestType().equals("END"))
+                            }
+                            else if(message.getRequestType().equals("END")){
                                 //TODO Implementar end
-                                System.out.println("IMPLEMENTAR END TCP");
+                                //System.out.println("IMPLEMENTAR END TCP");
+                                //System.exit(0);
+                            }
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -270,7 +275,8 @@ public class Peer {
                     leaveOk = true;
                 }
             }while (!leaveOk);
-            //sendEndRequest(leaveSocket);
+
+            //sendEndRequest();
         });
         leaveThread.start();
         return true;
@@ -338,12 +344,18 @@ public class Peer {
     }
 
     //TODO tem que se comunicar com o socket TCP
-    private static void sendEndRequest(DatagramSocket socket) {
+    private static void sendEndRequest() {
         try {
-            InetAddress localHost = InetAddress.getByName("127.0.0.1");
-            Mensagem joinMessage = new Mensagem("END");
-            DatagramPacket sendPacket = getDatagramPacketFromMessage(localHost, alivePort, joinMessage);
-            socket.send(sendPacket);
+
+            Socket socket = new Socket("127.0.0.1", port);
+            OutputStream outputStream = socket.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(outputStream);
+            Mensagem message = new Mensagem("END");
+            Gson gson = new Gson();
+            String jsonMessage = gson.toJson(message);
+            writer.writeBytes(jsonMessage.concat("\n"));
+            socket.close();
+
         } catch (IOException e) {
             e.printStackTrace();
         }

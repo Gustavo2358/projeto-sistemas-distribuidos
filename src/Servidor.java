@@ -79,6 +79,7 @@ public class Servidor {
         Thread leaveThread = new Thread(()-> {
             try {
                 removePeerFiles(receivedMessage);
+                //TODO dar um jeito de parar a thread do ALIVE associada ao peer que deu o LEAVE
                 sendOkResponse(socket, receivedPacket, "LEAVE_OK");
             } catch (IOException e) {
                 e.printStackTrace();
