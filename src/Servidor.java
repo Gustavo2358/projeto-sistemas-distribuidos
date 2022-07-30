@@ -15,7 +15,10 @@ import java.util.stream.Collectors;
  * requisições repetidas em um determinado período de tempo? (por exemplo, uma black list).
  */
 public class Servidor {
+
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
+    private static final Map<InetSocketAddress, Thread> aliveThreads = new ConcurrentHashMap<>();
+
 
     public static void main(String[] args) {
         handleRequests();
@@ -25,7 +28,7 @@ public class Servidor {
         try {
             DatagramSocket socket = new DatagramSocket(10098);
             //noinspection InfiniteLoopStatement
-            do {
+            while(true) {
                 DatagramPacket receivedPacket = listenToIncomingMessages(socket);
                 Mensagem receivedMessage = getMessageFromDatagramPacket(receivedPacket);
                 switch (receivedMessage.getRequestType()) {
@@ -42,7 +45,7 @@ public class Servidor {
                     case "UPDATE":
                         update(socket, receivedPacket, receivedMessage);
                 }
-            } while (true);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -80,6 +83,9 @@ public class Servidor {
             try {
                 removePeerFiles(receivedMessage);
                 //TODO dar um jeito de parar a thread do ALIVE associada ao peer que deu o LEAVE
+                InetSocketAddress PeerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
+                Thread aliveThread = aliveThreads.get(PeerAddress);
+                aliveThread.interrupt();
                 sendOkResponse(socket, receivedPacket, "LEAVE_OK");
             } catch (IOException e) {
                 e.printStackTrace();
@@ -89,20 +95,20 @@ public class Servidor {
     }
 
 
-    private static void join(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
+    private static void join(DatagramSocket socket, DatagramPacket joinReceivedPacket, Mensagem receivedMessage) {
         Thread joinThread = new Thread(()-> {
             try {
                 handleJoinRequest(receivedMessage);
-                sendOkResponse(socket, receivedPacket, "JOIN_OK");
+                sendOkResponse(socket, joinReceivedPacket, "JOIN_OK");
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            alive(receivedPacket);
+            alive(joinReceivedPacket, receivedMessage);
         });
         joinThread.start();
     }
 
-    private static void alive(DatagramPacket receivedPacket) {
+    private static void alive(DatagramPacket receivedPacket, Mensagem joinMessage) {
         Thread aliveThread = new Thread(() -> {
             try {
                 DatagramSocket socket= new DatagramSocket();
@@ -118,7 +124,7 @@ public class Servidor {
                     if (receivedMessage.getRequestType().equals("ALIVE_OK")) {
                         //TODO debug, apagar depois
                         System.out.println("ALIVE OK recebido do peer " + receivedPacket.getPort());
-                        sleep(30 * 1000);
+                        Thread.sleep(30 * 1000);
                     }else{
                         break;
                     }
@@ -128,9 +134,14 @@ public class Servidor {
                 deadPeer(getMessageFromDatagramPacket(receivedPacket));
             } catch (IOException e) {
                 e.printStackTrace();
+            } catch (InterruptedException e){
+
             }
         });
         aliveThread.start();
+        InetSocketAddress peerAddress = new InetSocketAddress(joinMessage.getIp(), joinMessage.getPort());
+        aliveThreads.put(peerAddress, aliveThread);
+
     }
 
     private static void deadPeer(Mensagem message) {

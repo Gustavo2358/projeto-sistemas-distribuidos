@@ -2,7 +2,6 @@ import com.google.gson.Gson;
 
 import java.io.*;
 import java.net.*;
-import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +20,6 @@ public class Peer {
 
     private static InetAddress ip;
     private static int port;
-    private static int alivePort;
     private static Path directoryPath;
     private static List<String> filesList;
     private static String requestedFile;
@@ -45,8 +43,7 @@ public class Peer {
                     break;
                 case 4:
                     System.out.println("Leaving...");
-                    //leaveOk = leave();
-                    leave();
+                    leaveOk = leave();
                     break;
                 default:
                     System.out.println("Digite uma opção válida (entre 1 e 4)");
@@ -57,7 +54,6 @@ public class Peer {
     }
 
     private static void alive(DatagramSocket socket) {
-        alivePort = socket.getLocalPort();
         Thread thread = new Thread(()->{
             try {
                 while (true) {
@@ -69,11 +65,14 @@ public class Peer {
                         break;
                     }
                 }
+            }catch (SocketTimeoutException e){
+                System.out.println("saiu do alive");
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
         thread.start();
+
 
     }
 
@@ -92,7 +91,7 @@ public class Peer {
     private static DatagramPacket listenToIncomingMessages(DatagramSocket serverSocket) throws IOException {
         byte[] recBuffer = new byte[1024];
         DatagramPacket recPkt = new DatagramPacket(recBuffer, recBuffer.length);
-        serverSocket.setSoTimeout(0);
+        serverSocket.setSoTimeout(32000);
         serverSocket.receive(recPkt);
 
         return recPkt;
@@ -120,29 +119,28 @@ public class Peer {
         Thread listenThread = new Thread(() -> {
 
             try {
-                //escuta conexões TCP no e IP e porta que o usuário digitou para identificar o Peer
+                //escuta conexões TCP no IP e porta que o usuário digitou para identificar o Peer
                 ServerSocket serverSocket = new ServerSocket(port);
                 while(true) {
                     Socket socket = serverSocket.accept();
-                    Thread uploadThread = new Thread(() -> {
-                        try {
-                            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                            String jsonMessage = reader.readLine();
-                            Gson gson = new Gson();
-                            Mensagem message = gson.fromJson(jsonMessage, Mensagem.class);
-                            if (message.getRequestType().equals("DOWNLOAD")){
-                                sendFile(message.getRequestedFile(), socket);
-                            }
-                            else if(message.getRequestType().equals("END")){
-                                //TODO Implementar end
-                                //System.out.println("IMPLEMENTAR END TCP");
-                                //System.exit(0);
-                            }
-                        } catch (IOException e) {
-                            e.printStackTrace();
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                        String jsonMessage = reader.readLine();
+                        Gson gson = new Gson();
+                        Mensagem message = gson.fromJson(jsonMessage, Mensagem.class);
+                        if (message.getRequestType().equals("DOWNLOAD")){
+                            Thread uploadThread = new Thread(() -> {
+                                try {
+                                    sendFile(message.getRequestedFile(), socket);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            });
+                            uploadThread.start();
                         }
-                    });
-                    uploadThread.start();
+                        else if(message.getRequestType().equals("END")){
+                            //TODO Implementar end
+                            break;
+                        }
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -276,7 +274,7 @@ public class Peer {
                 }
             }while (!leaveOk);
 
-            //sendEndRequest();
+            sendEndRequest();
         });
         leaveThread.start();
         return true;
