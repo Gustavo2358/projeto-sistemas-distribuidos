@@ -6,10 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.Scanner;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 //TODO no timeout do search é retornado um null ao invés da lista
@@ -180,26 +177,67 @@ public class Peer {
     //Peer atuando como cliente
     private static void download(){
         InetSocketAddress address = getDownloadPeerAddress();
-        try {
-            //send download request
-            Socket socket = new Socket(address.getAddress(), address.getPort());
-            OutputStream outputStream = socket.getOutputStream();
-            DataOutputStream writer = new DataOutputStream(outputStream);
-            Mensagem message = new Mensagem("DOWNLOAD", requestedFile);
-            Gson gson = new Gson();
-            String jsonMessage = gson.toJson(message);
-            writer.writeBytes(jsonMessage.concat("\n"));
-            //
-            getDownloadResponse(socket);
 
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println(e.getMessage());
+        class DownloadThread extends Thread{
+            private InetSocketAddress address;
+            public DownloadThread(InetSocketAddress address){
+                this.address = address;
+            }
+
+            @Override
+            public void run() {
+
+                Queue<String> availablePeersQueue = new LinkedList<>(peersWithRequestedFile);
+
+                //pega endereço do peer selecionado pelo usuário
+                availablePeersQueue.remove(address.toString());
+
+                boolean downloadOk = false;
+                while(!downloadOk) {
+                    try {
+                        //send download request
+                        Socket socket = new Socket(address.getAddress(), address.getPort());
+                        OutputStream outputStream = socket.getOutputStream();
+                        DataOutputStream writer = new DataOutputStream(outputStream);
+                        Mensagem message = new Mensagem("DOWNLOAD", requestedFile);
+                        Gson gson = new Gson();
+                        String jsonMessage = gson.toJson(message);
+                        writer.writeBytes(jsonMessage.concat("\n"));
+                        //
+                        downloadOk = getDownloadResponse(socket);
+                        if(!downloadOk){
+                            if(peersWithRequestedFile.size() == 1){
+                                System.out.println("Download negado, refazendo o pedido em 5 segundos");
+                                Thread.sleep(5000);
+                            }
+                            else if(!availablePeersQueue.isEmpty()) {
+                                socket.close();
+                                InetSocketAddress oldAddress = address;
+                                address = getInetSocketAddressFromString(availablePeersQueue.poll());
+                                System.out.printf("peer %s negou o download, pedindo agora para o peer %s%n", oldAddress, address);
+                            } else {
+                                availablePeersQueue = new LinkedList<>(peersWithRequestedFile);
+                            }
+                        }
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
         }
+        DownloadThread downloadThread = new DownloadThread(address);
+        downloadThread.start();
     }
 
-    private static void getDownloadResponse(Socket socket){
-        Thread downloadThread = new Thread(() -> {
+    private static InetSocketAddress getInetSocketAddressFromString(String address) {
+        String[] split = address.substring(1).split(":");
+        return new InetSocketAddress(split[0], Integer.parseInt(split[1]));
+    }
+
+    private static boolean getDownloadResponse(Socket socket){
             try {
                 //in
                 InputStream inputStream = socket.getInputStream();
@@ -213,17 +251,17 @@ public class Peer {
                         System.out.println("Download negado");
                         outputStream.close();
                         Files.delete(Paths.get(String.valueOf(directoryPath), requestedFile));
-                        break;
+                        return false;
                     }
                     outputStream.write(buffer, 0, read);
                 }
                 update();
                 socket.close();
+                return true;
             }catch (IOException e){
                 e.printStackTrace();
+                return false;
             }
-        });
-        downloadThread.start();
     }
 
     private static void update() {
@@ -275,7 +313,7 @@ public class Peer {
         searchThread.start();
     }
 
-    private static boolean leave() {
+    private static void leave() {
         Thread leaveThread = new Thread(()->{
             boolean leaveOk = false;
             DatagramSocket leaveSocket = getDatagramSocket();
@@ -290,7 +328,6 @@ public class Peer {
             sendEndRequest();
         });
         leaveThread.start();
-        return true;
     }
 
 
