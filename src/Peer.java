@@ -28,8 +28,7 @@ public class Peer {
     public static void main(String[] args) {
         getPeerInfo();
         listenToDownloadRequests();
-        boolean leaveOk = false;
-        do {
+        while (true) {
             int opt = menu();
             switch (opt) {
                 case 1:
@@ -43,14 +42,13 @@ public class Peer {
                     break;
                 case 4:
                     System.out.println("Leaving...");
-                    leaveOk = leave();
+                    leave();
                     break;
                 default:
                     System.out.println("Digite uma opção válida (entre 1 e 4)");
                     break;
             }
-        } while (!leaveOk);
-        System.out.println("saiu do loop");
+        }
     }
 
     private static void alive(DatagramSocket socket) {
