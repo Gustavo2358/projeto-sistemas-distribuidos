@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -126,9 +127,15 @@ public class Peer {
                         Gson gson = new Gson();
                         Mensagem message = gson.fromJson(jsonMessage, Mensagem.class);
                         if (message.getRequestType().equals("DOWNLOAD")){
+
                             Thread uploadThread = new Thread(() -> {
                                 try {
-                                    sendFile(message.getRequestedFile(), socket);
+                                    Random random = new Random();
+                                    if(random.nextBoolean()) {
+                                        sendFile(message.getRequestedFile(), socket);
+                                    } else {
+                                        denyDownload(socket);
+                                    }
                                 } catch (IOException e) {
                                     e.printStackTrace();
                                 }
@@ -145,6 +152,13 @@ public class Peer {
             }
         });
         listenThread.start();
+    }
+
+
+    private static void denyDownload(Socket socket) throws IOException {
+        OutputStream outputStream = socket.getOutputStream();
+        byte[] buffer = "DOWNLOAD_NEGADO".getBytes(StandardCharsets.UTF_8);
+        outputStream.write(buffer,0,buffer.length);
     }
 
     private static void sendFile(String requestedFile, Socket socket) throws IOException {
@@ -197,11 +211,12 @@ public class Peer {
                 while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
                     if(new String(buffer, 0, 15).equals("DOWNLOAD_NEGADO")) {
                         System.out.println("Download negado");
+                        outputStream.close();
+                        Files.delete(Paths.get(String.valueOf(directoryPath), requestedFile));
                         break;
                     }
                     outputStream.write(buffer, 0, read);
                 }
-                System.out.println("Arquivo recebido, falta fazer o UPDATE");
                 update();
                 socket.close();
             }catch (IOException e){
