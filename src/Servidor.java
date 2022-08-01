@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -13,10 +14,23 @@ public class Servidor {
 
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
     private static final Map<InetSocketAddress, Thread> aliveThreads = new ConcurrentHashMap<>();
-
+    private static InetAddress serverIp = null;
 
     public static void main(String[] args) {
+        getIp();
         handleRequests();
+    }
+
+    private static void getIp() {
+        System.out.println("Digite o ip do servidor: ");
+        Scanner sc = new Scanner(System.in);
+        while(serverIp == null) {
+            try {
+                serverIp = InetAddress.getByName(sc.nextLine());
+            } catch (UnknownHostException e) {
+                System.out.println("Endereço inválido");
+            }
+        }
     }
 
     private static void handleRequests() {
