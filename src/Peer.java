@@ -9,7 +9,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-//TODO no timeout do search é retornado um null ao invés da lista
 public class Peer {
 
     private final static int TIME_OUT = 2000;
@@ -39,7 +38,6 @@ public class Peer {
                     download();
                     break;
                 case 4:
-                    System.out.println("Leaving...");
                     leave();
                     break;
                 default:
@@ -62,7 +60,6 @@ public class Peer {
                     }
                 }
             }catch (SocketTimeoutException e){
-                System.out.println("saiu do alive");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -140,7 +137,6 @@ public class Peer {
                             uploadThread.start();
                         }
                         else if(message.getRequestType().equals("END")){
-                            //TODO Implementar end
                             break;
                         }
                 }
@@ -168,9 +164,6 @@ public class Peer {
             outputStream.write(buffer, 0, read);
         }
         socket.close();
-
-        //TODO debug, apagar depois
-        System.out.println("ARQUIVO ENVIADO");
 
     }
 
@@ -248,7 +241,6 @@ public class Peer {
                 int read;
                 while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
                     if(new String(buffer, 0, 15).equals("DOWNLOAD_NEGADO")) {
-                        System.out.println("Download negado");
                         outputStream.close();
                         Files.delete(Paths.get(String.valueOf(directoryPath), requestedFile));
                         return false;
@@ -275,8 +267,6 @@ public class Peer {
                 Mensagem response = receiveResponse(updateSocket);
                 if (response.getRequestType().equals("UPDATE_OK")) {
                     updateOk = true;
-                    //TODO debug, apagar depois
-                    System.out.println("UPDATE_OK");
                 }
             }while (!updateOk);
         });
@@ -332,7 +322,6 @@ public class Peer {
 
 
     private static void join() {
-        //TODO dúvida: deve refazer a requisição eternamente ou por um certa quantidade de vezes?
         Thread joinThread = new Thread(() -> {
             boolean joinOk = false;
             DatagramSocket joinSocket = getDatagramSocket();
@@ -375,7 +364,6 @@ public class Peer {
             socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
-            System.err.println(e.getMessage());
         }
     }
 
@@ -387,11 +375,9 @@ public class Peer {
             socket.send(sendPacket);
         } catch (IOException e) {
             e.printStackTrace();
-            System.err.println(e.getMessage());
         }
     }
 
-    //TODO tem que se comunicar com o socket TCP
     private static void sendEndRequest() {
         try {
 
@@ -453,8 +439,6 @@ public class Peer {
     private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
         Gson gson = new Gson();
         String messageJson = gson.toJson(Message);
-        //TODO debug, Json apagar depois
-        //System.out.println("Json enviado para o Servidor: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
@@ -512,10 +496,7 @@ public class Peer {
             directoryPath = Paths.get(directoryName);
             try {
                 if (!Files.isDirectory(Paths.get(directoryName))) {
-                    //TODO debug, apagar mensagens no console que não estão na requisição do professor
-                    System.out.println("O diretório ainda não existe, criando novo diretório...");
                     Files.createDirectory(Paths.get(directoryName));
-                    System.out.println("Diretório criado com sucesso.");
                     return;
                 }
                 System.out.println("Diretório selecionado.");

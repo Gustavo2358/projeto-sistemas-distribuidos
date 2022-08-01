@@ -7,13 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-/*TODO duvida: caso mande o Ip errado, ele nunca irá parar de mandar a requisição para o servidor, e nunca irá receber
- * o JOIN_OK, será que é importante implementar algum dispositivo no servidor que não aceite um certo número de
- * requisições repetidas em um determinado período de tempo? (por exemplo, uma black list).
- */
 public class Servidor {
 
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
@@ -55,7 +50,8 @@ public class Servidor {
 
         Thread joinThread = new Thread(()-> {
             try {
-                handleUpdateRequest(receivedMessage);
+                InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
+                peers.replace(peerAddress, receivedMessage.getFiles());
                 sendOkResponse(socket, receivedPacket, "UPDATE_OK");
             } catch (IOException e) {
                 e.printStackTrace();
@@ -82,7 +78,6 @@ public class Servidor {
         Thread leaveThread = new Thread(()-> {
             try {
                 removePeerFiles(receivedMessage);
-                //TODO dar um jeito de parar a thread do ALIVE associada ao peer que deu o LEAVE
                 InetSocketAddress PeerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
                 Thread aliveThread = aliveThreads.get(PeerAddress);
                 aliveThread.interrupt();
@@ -122,8 +117,6 @@ public class Servidor {
                     socket.receive(receivedAliveOk);
                     Mensagem receivedMessage = getMessageFromDatagramPacket(receivedAliveOk);
                     if (receivedMessage.getRequestType().equals("ALIVE_OK")) {
-                        //TODO debug, apagar depois
-                        System.out.println("ALIVE OK recebido do peer " + receivedPacket.getPort());
                         Thread.sleep(30 * 1000);
                     }else{
                         break;
@@ -147,18 +140,10 @@ public class Servidor {
     private static void deadPeer(Mensagem message) {
         List<String> value = removePeerFiles(message);
         if (Objects.nonNull(value)) {
-            String messageFilesString = message.getFiles().stream()
+            String messageFilesString = value.stream()
                     .map(f -> f + " ")
                     .collect(Collectors.joining());
             System.out.printf("Peer %s:%d morto. Eliminando seus arquivos %s%n", message.getIp(), message.getPort(), messageFilesString);
-        }
-    }
-
-    private static void sleep(int milli) {
-        try {
-            Thread.sleep(milli);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
         }
     }
 
@@ -178,21 +163,8 @@ public class Servidor {
 
     }
 
-    private static void handleUpdateRequest(Mensagem receivedMessage) {
-        InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
-        peers.replace(peerAddress, receivedMessage.getFiles());
-        String messageFilesString = receivedMessage.getFiles().stream()
-                .map(f -> f + " ")
-                .collect(Collectors.joining());
-        System.out.printf("Peer %s:%d atualizado com arquivos %s%n", peerAddress.getAddress(), peerAddress.getPort(), messageFilesString);
-
-    }
-
     private static void handleJoinRequest(Mensagem receivedMessage) throws IOException {
         InetSocketAddress peerAddress = new InetSocketAddress(receivedMessage.getIp(), receivedMessage.getPort());
-        /*TODO se for feito um JOIN com o endereço de outra pessoa, mas com uma pasta com outros arquivos, esses arquivos
-         * serão sobrescritos e o ALIVE_OK não irá limpar esses arquivos caso o peer original não tenho saído da rede.
-         */
         peers.put(peerAddress, receivedMessage.getFiles());
         String messageFilesString = receivedMessage.getFiles().stream()
                 .map(f -> f + " ")
@@ -214,16 +186,6 @@ public class Servidor {
         Mensagem OkMessage = new Mensagem(okType);
         DatagramPacket sendPacket = getDatagramPacketFromMessage(receivedPacket.getAddress(), receivedPacket.getPort(), OkMessage);
 
-        //TODO debug, apagar depois, imprime estado atual do peers
-        System.out.println("Arquivos no map peers:");
-        peers.entrySet().forEach(System.out::println);
-        //TODO debug, apagar esse sleep, só para teste
-        //simulando uma resposta demorada
-//        try {
-//            Thread.sleep(4500);
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
         socket.send(sendPacket);
     }
 
@@ -243,8 +205,6 @@ public class Servidor {
     private static DatagramPacket getDatagramPacketFromMessage(InetAddress receiverIpAddress,int receiverPort, Mensagem Message) {
         Gson gson = new Gson();
         String messageJson = gson.toJson(Message);
-        //TODO debug, apagar depois
-        System.out.println("Json request foi enviado para o Peer: " + messageJson);
         byte[] sendData = messageJson.getBytes(StandardCharsets.UTF_8);
         return new DatagramPacket(sendData, sendData.length, receiverIpAddress, receiverPort );
     }
