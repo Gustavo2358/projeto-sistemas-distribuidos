@@ -15,7 +15,7 @@ public class Servidor {
     private static final Map<InetSocketAddress, List<String>> peers = new ConcurrentHashMap<>();
     private static final Map<InetSocketAddress, Thread> aliveThreads = new ConcurrentHashMap<>();
     private static InetAddress serverIp = null;
-
+    //Inicialização do servidor
     public static void main(String[] args) {
         getIp();
         handleRequests();
@@ -59,7 +59,7 @@ public class Servidor {
             e.printStackTrace();
         }
     }
-
+    //Requisição UPDATE
     private static void update(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
 
         Thread joinThread = new Thread(()-> {
@@ -74,7 +74,7 @@ public class Servidor {
         joinThread.start();
     }
 
-
+    //Requisição SEARCH
     private static void search(DatagramSocket socket, DatagramPacket receivedPacket,  Mensagem receivedMessage) {
         Thread searchThread = new Thread(() -> {
             List<InetSocketAddress> peersWithRequestedFiles = handleSearchRequest(receivedMessage);
@@ -87,7 +87,7 @@ public class Servidor {
         searchThread.start();
     }
 
-
+    //Requisição LEAVE
     private static void leave(DatagramSocket socket, DatagramPacket receivedPacket, Mensagem receivedMessage) {
         Thread leaveThread = new Thread(()-> {
             try {
@@ -103,7 +103,7 @@ public class Servidor {
         leaveThread.start();
     }
 
-
+    //Requisição JOIN
     private static void join(DatagramSocket socket, DatagramPacket joinReceivedPacket, Mensagem receivedMessage) {
         Thread joinThread = new Thread(()-> {
             try {
@@ -116,7 +116,7 @@ public class Servidor {
         });
         joinThread.start();
     }
-
+    //Requisição ALIVE
     private static void alive(DatagramPacket receivedPacket, Mensagem joinMessage) {
         Thread aliveThread = new Thread(() -> {
             try {
