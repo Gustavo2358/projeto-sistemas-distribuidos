@@ -21,7 +21,7 @@ public class Peer {
     private static List<String> filesList;
     private static String requestedFile;
     private static List<String> peersWithRequestedFile;
-
+    //Inicialização do peer:
     public static void main(String[] args) {
         getPeerInfo();
         listenToDownloadRequests();
@@ -46,7 +46,7 @@ public class Peer {
             }
         }
     }
-
+    //Requisição ALIVE
     private static void alive(DatagramSocket socket) {
         Thread thread = new Thread(()->{
             try {
@@ -147,7 +147,7 @@ public class Peer {
         listenThread.start();
     }
 
-
+    //Requisição DOWNLOAD_NEGADO
     private static void denyDownload(Socket socket) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         byte[] buffer = "DOWNLOAD_NEGADO".getBytes(StandardCharsets.UTF_8);
@@ -184,7 +184,7 @@ public class Peer {
 
                 //pega endereço do peer selecionado pelo usuário
                 availablePeersQueue.remove(address.toString());
-
+                //Requisição DOWNLOAD
                 boolean downloadOk = false;
                 while(!downloadOk) {
                     try {
@@ -232,13 +232,13 @@ public class Peer {
 
     private static boolean getDownloadResponse(Socket socket){
             try {
-                //in
+
                 InputStream inputStream = socket.getInputStream();
                 BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
-                //out
                 OutputStream outputStream = new FileOutputStream(directoryPath + "/" + requestedFile);
                 byte[] buffer = new byte[1024 * 1024];
                 int read;
+                //Recebimento do arquivo
                 while ((read = bufferedInputStream.read(buffer, 0, buffer.length)) != -1) {
                     if(new String(buffer, 0, 15).equals("DOWNLOAD_NEGADO")) {
                         outputStream.close();
@@ -255,7 +255,7 @@ public class Peer {
                 return false;
             }
     }
-
+    //Requisição UPDATE
     private static void update() {
 
         Thread updateThread = new Thread(() -> {
@@ -282,7 +282,7 @@ public class Peer {
         Integer hostPort = getPort(sc);
         return new InetSocketAddress(hostIp, hostPort);
     }
-
+    //Requisição SEARCH
     private static void search() {
         final Scanner sc = new Scanner(System.in);
         System.out.println("Digite o nome do arquivo:");
@@ -302,7 +302,7 @@ public class Peer {
         });
         searchThread.start();
     }
-
+    //Requisição LEAVE
     private static void leave() {
         Thread leaveThread = new Thread(()->{
             boolean leaveOk = false;
@@ -320,7 +320,7 @@ public class Peer {
         leaveThread.start();
     }
 
-
+    //Requisição JOIN
     private static void join() {
         Thread joinThread = new Thread(() -> {
             boolean joinOk = false;
